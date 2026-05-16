@@ -1,0 +1,84 @@
+# Design — Ableton MCP Server
+
+A local MCP server that lets Claude create tracks, load instruments, and write MIDI clips in Ableton Live 12.
+
+> **Status**: pre-release, no implementation yet. This doc captures the design decisions. User-facing install/usage lives in [README.md](README.md).
+
+## Setup
+
+- **Host**: macOS, Ableton Live 12 Suite (Intro/Standard ship without several instruments in the allowlist).
+- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. Used as-is — we do not fork or modify it. Pinned to a specific commit (see README install instructions).
+- **MCP transport**: stdio. Claude Desktop launches the server as a child process. No network port.
+- **Language**: Python. Same language as AbletonOSC, mature MCP SDK, `python-osc` for the bridge call.
+
+## Architecture
+
+```
+Claude Desktop ──stdio──▶ MCP server ──OSC──▶ AbletonOSC ──LOM──▶ Ableton Live
+                          (this repo)         (in Live)
+```
+
+Four processes, three transports. This repo is the second box — the only piece we author.
+
+The MCP server speaks OSC bidirectionally: it sends commands to `127.0.0.1:11000` and binds a UDP listener on `127.0.0.1:11001` to receive replies. Not pure fire-and-forget.
+
+## MVP scope (v0.1)
+
+Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
+
+| Tool | Purpose |
+|---|---|
+| `create_midi_track(name?)` | Add a MIDI track. Returns track index. |
+| `load_instrument(track_index, instrument)` | Load a built-in Live instrument. `instrument` is an enum (see below). |
+| `create_clip(track_index, clip_slot, length_bars, notes)` | Create a MIDI clip and write notes. |
+| `chord_progression(track_index, clip_slot, chords, rhythm)` | Higher-level helper. Takes chord symbols and a rhythm pattern, expands to notes, calls `create_clip`. |
+
+### Conventions
+
+- **Pitch**: MIDI note numbers, 0–127. `60 = C4` (Ableton convention; some DAWs call this C3).
+- **Velocity**: integer 1–127. 0 means note-off and is rejected.
+- **Time**: beats from clip start, not project position. Floats accepted; rounded to 1e-6 before sending to avoid LOM denormal issues.
+- **Note shape**: `{pitch: int, start_beat: float, duration_beat: float, velocity: int}`.
+- **`clip_slot` collision**: if the slot already contains a clip, the tool returns an error. No overwrite, no auto-pick.
+
+### Instrument allowlist (v0.1)
+
+Live's LOM loads devices by browser URI, not by name. Hand-maintained map of Live 12 Suite built-ins:
+
+`operator`, `wavetable`, `drift`, `meld`, `analog`, `electric`, `tension`, `simpler`, `collision`
+
+Each maps to a verified browser path. Adding instruments = extending this map after testing the URI.
+
+### Chord parsing
+
+`chord_progression` uses [`pychord`](https://github.com/yuma-m/pychord) for symbol parsing. Lighter than music21, covers the common cases (maj/min/7/maj7/m7/dim/aug, slash chords, extensions). Voicing is naïve root-position for v0.1.
+
+### Out of scope for MVP
+
+- Audio tracks, audio clips, audio routing
+- Effects, device chains beyond the instrument slot
+- Tempo, time signature, transport control
+- Free-form browser navigation (only allowlisted instruments)
+- Saving, loading, or exporting project files
+- User instrument libraries, third-party packs, M4L devices
+
+## Constraints worth knowing
+
+- **Live has no native API.** The only ways in are Remote Scripts (Python in Live) or Max for Live devices. AbletonOSC is the Remote Script — we do not reinvent it.
+- **Instruments load by URI, not by name.** Hardcode the map. Wrong URI = silent failure or wrong device.
+- **OSC is UDP.** No connection errors. The server pings `/live/test` on startup with a ~500ms timeout and refuses to register tools if Live isn't reachable.
+- **Localhost-only.** Bridge on `127.0.0.1:11000`/`11001`. Stdio MCP transport has no listening port. Nothing reachable off-machine.
+- **Live must be running** with AbletonOSC selected as the active Control Surface before any tool call works.
+
+## Open decisions
+
+- **Rhythm pattern shape for `chord_progression`**: explicit `(start_beat, duration_beat)` tuples vs named patterns (`"whole"`, `"quarter"`, `"comping"`). Lean explicit tuples for v0.1, named patterns later.
+- **Voicing**: root position only for v0.1. Voice-leading is a v0.2 question.
+
+## Related work
+
+Other Ableton MCP projects exist (e.g. Siddharth Ahuja's `ableton-mcp`). Audit before public release and either differentiate (AbletonOSC-based approach, scope, chord helper) or consider contributing upstream. Add a "Related work" section to README before going public.
+
+## Design provenance
+
+These decisions came out of a design conversation in claude.ai chat before this repo had any code. The non-obvious calls — using AbletonOSC instead of writing a custom Remote Script, choosing stdio over HTTP, scoping MVP to four tools — are explained in that conversation. If you change any of them, write down why.
