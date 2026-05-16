@@ -66,7 +66,7 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 
 - **Live has no native API.** The only ways in are Remote Scripts (Python in Live) or Max for Live devices. AbletonOSC is the Remote Script — we do not reinvent it.
 - **Instruments load by URI, not by name.** Hardcode the map. Wrong URI = silent failure or wrong device.
-- **OSC is UDP.** No connection errors. The server pings `/live/test` on startup with a ~500ms timeout and refuses to register tools if Live isn't reachable.
+- **OSC is UDP.** No connection errors. The server pings `/live/test` lazily on the first tool call with a 500ms timeout and raises a clear error if Live isn't reachable. (Lazy rather than at-startup so Claude Desktop doesn't need Live running when it spawns the server — the user can start Live mid-session and the next tool call will succeed.)
 - **Localhost-only.** Bridge on `127.0.0.1:11000`/`11001`. Stdio MCP transport has no listening port. Nothing reachable off-machine.
 - **Live must be running** with AbletonOSC selected as the active Control Surface before any tool call works.
 

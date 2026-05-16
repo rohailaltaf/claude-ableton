@@ -34,25 +34,33 @@ python scripts/ping.py   # expects a reply from /live/test within 500ms
 
 ### 2. The MCP server
 
+This project uses [uv](https://github.com/astral-sh/uv) to manage Python and dependencies.
+
 ```bash
-# TODO: pip / uv install instructions once the package ships
+brew install uv                      # or: curl -LsSf https://astral.sh/uv/install.sh | sh
+git clone https://github.com/rohailaltaf/claude-ableton.git
+cd claude-ableton
+uv sync                              # installs Python 3.12 and dependencies into .venv
 ```
 
 ### 3. Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, replacing the directory path with where you cloned the repo:
 
 ```json
 {
   "mcpServers": {
     "ableton": {
-      "command": "claude-ableton"
+      "command": "/opt/homebrew/bin/uv",
+      "args": ["run", "--directory", "/absolute/path/to/claude-ableton", "claude-ableton"]
     }
   }
 }
 ```
 
 Restart Claude Desktop.
+
+> Once the package is published to PyPI, this will simplify to `"command": "uvx", "args": ["claude-ableton"]`.
 
 ## Usage
 
