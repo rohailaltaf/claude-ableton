@@ -74,7 +74,7 @@ With Live open and Claude Desktop running, try:
 |---|---|---|
 | `create_midi_track(name?)` | shipped | Add a MIDI track. |
 | `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument from the allowlist. |
-| `create_clip(track_index, clip_slot, length_bars, notes)` | planned | Create a MIDI clip and write notes. |
+| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes. |
 | `chord_progression(track_index, clip_slot, chords, rhythm)` | planned | Write a chord progression. |
 
 See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrument allowlist).

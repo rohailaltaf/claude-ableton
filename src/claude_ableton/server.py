@@ -18,6 +18,24 @@ class LoadInstrumentResult(TypedDict):
     instrument: str
     device_index: int
 
+
+class Note(TypedDict):
+    pitch: int          # MIDI note number, 0-127 (60 = C4)
+    start_beat: float   # beats from clip start
+    duration_beat: float
+    velocity: int       # MIDI velocity, 1-127
+
+
+class CreateClipResult(TypedDict):
+    track_index: int
+    clip_slot: int
+    length_beats: float
+    note_count: int
+
+
+BEATS_PER_BAR = 4  # MVP assumes 4/4 time
+TIME_QUANTUM = 1e-6  # round note times to avoid LOM denormal issues
+
 LIVE_TICK_SEC = 0.15
 LOAD_TIMEOUT_SEC = 2.0
 LOAD_POLL_SEC = 0.1
@@ -120,6 +138,103 @@ def load_instrument(track_index: int, instrument: str) -> LoadInstrumentResult:
         f"Load timed out: {instrument!r} did not appear on track "
         f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s."
     )
+
+
+def _validate_note(note: Note, index: int) -> None:
+    pitch = note["pitch"]
+    velocity = note["velocity"]
+    start_beat = note["start_beat"]
+    duration_beat = note["duration_beat"]
+    if not (0 <= pitch <= 127):
+        raise ValueError(f"note[{index}]: pitch {pitch} out of range 0-127")
+    if not (1 <= velocity <= 127):
+        raise ValueError(
+            f"note[{index}]: velocity {velocity} out of range 1-127 "
+            "(0 means note-off and is not accepted)"
+        )
+    if start_beat < 0:
+        raise ValueError(f"note[{index}]: start_beat {start_beat} must be >= 0")
+    if duration_beat <= 0:
+        raise ValueError(
+            f"note[{index}]: duration_beat {duration_beat} must be > 0"
+        )
+
+
+@mcp.tool()
+def create_clip(
+    track_index: int,
+    clip_slot: int,
+    length_bars: float,
+    notes: list[Note] | None = None,
+    name: str | None = None,
+) -> CreateClipResult:
+    """Create a MIDI clip in the given clip slot and optionally write notes.
+
+    Assumes 4/4 time (4 beats per bar). If the slot already contains a clip,
+    raises rather than overwriting.
+
+    Args:
+        track_index: zero-based track index. Track must be a MIDI track.
+        clip_slot: zero-based clip slot (scene) index.
+        length_bars: clip length in bars (must be > 0).
+        notes: optional list of notes to write. Each note:
+            - pitch: MIDI note number 0-127 (60 = C4 in Ableton)
+            - start_beat: beats from clip start (>= 0)
+            - duration_beat: beats (> 0)
+            - velocity: MIDI velocity 1-127 (0 means note-off, rejected)
+        name: optional clip name.
+
+    Returns:
+        Dict with track_index, clip_slot, length_beats, note_count.
+
+    Raises:
+        ValueError: invalid length, slot collision, or invalid note.
+    """
+    if length_bars <= 0:
+        raise ValueError(f"length_bars must be > 0 (got {length_bars})")
+
+    notes = notes or []
+    for i, note in enumerate(notes):
+        _validate_note(note, i)
+
+    client = _get_client()
+
+    # Collision check
+    has = client.query("/live/clip_slot/get/has_clip", track_index, clip_slot)
+    if bool(has[2]):
+        raise ValueError(
+            f"clip_slot ({track_index}, {clip_slot}) already contains a clip. "
+            "Delete it first or pick another slot."
+        )
+
+    length_beats = float(length_bars) * BEATS_PER_BAR
+    client.send("/live/clip_slot/create_clip", track_index, clip_slot, length_beats)
+    time.sleep(LIVE_TICK_SEC)
+
+    if name:
+        client.send("/live/clip/set/name", track_index, clip_slot, name)
+
+    if notes:
+        # /live/clip/add/notes takes (track, clip, pitch, start, duration, velocity, mute, ...)
+        # flattened across all notes.
+        flat: list[float | int | bool] = [track_index, clip_slot]
+        for note in notes:
+            flat.extend([
+                int(note["pitch"]),
+                round(float(note["start_beat"]) / TIME_QUANTUM) * TIME_QUANTUM,
+                round(float(note["duration_beat"]) / TIME_QUANTUM) * TIME_QUANTUM,
+                int(note["velocity"]),
+                False,  # mute
+            ])
+        client.send("/live/clip/add/notes", *flat)
+        time.sleep(LIVE_TICK_SEC)
+
+    return {
+        "track_index": track_index,
+        "clip_slot": clip_slot,
+        "length_beats": length_beats,
+        "note_count": len(notes),
+    }
 
 
 def main() -> None:
