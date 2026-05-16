@@ -8,7 +8,11 @@ requires-python = ">=3.10"
 authors = [{ name = "Rohail Altaf" }]
 dependencies = [
     "python-osc>=1.9",
+    "mcp>=1.0",
 ]
+
+[project.scripts]
+claude-ableton = "claude_ableton.server:main"
 
 [build-system]
 requires = ["hatchling"]
