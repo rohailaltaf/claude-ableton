@@ -17,10 +17,11 @@ A local MCP server that lets [Claude](https://claude.ai) create tracks, load ins
 This server talks to Live through [AbletonOSC](https://github.com/ideoforms/AbletonOSC), a Remote Script that exposes Live's Object Model over OSC.
 
 ```bash
+mkdir -p ~/Music/Ableton/User\ Library/Remote\ Scripts
 git clone https://github.com/ideoforms/AbletonOSC.git \
   ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
 cd ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
-git checkout <pinned-commit>   # TODO: pin before public release
+git checkout 0ca68214bd62c9b5cb641ca34006cfd70ba94430
 ```
 
 Restart Live, then go to **Preferences → Link, Tempo & MIDI → Control Surface** and select **AbletonOSC**.
