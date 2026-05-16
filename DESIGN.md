@@ -7,7 +7,7 @@ A local MCP server that lets Claude create tracks, load instruments, and write M
 ## Setup
 
 - **Host**: macOS, Ableton Live 12 Suite (Intro/Standard ship without several instruments in the allowlist).
-- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) because AbletonOSC doesn't ship handlers for some operations we need (notably device loading). The fork's `master` mirrors upstream; each added handler lives on its own feature branch (`feat/<name>`) so it can be PR'd upstream later as a single coherent change.
+- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) because AbletonOSC doesn't ship handlers for some operations we need (notably device loading). The fork's `master` accumulates each handler we add (merged with `--no-ff`); each addition also lives on its own `feat/<name>` branch indefinitely so it can be PR'd upstream as a single coherent change whenever we choose.
 - **MCP transport**: stdio. Claude Desktop launches the server as a child process. No network port.
 - **Language**: Python. Same language as AbletonOSC, mature MCP SDK, `python-osc` for the bridge call.
 

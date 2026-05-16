@@ -20,9 +20,9 @@ This server talks to Live through [AbletonOSC](https://github.com/ideoforms/Able
 mkdir -p ~/Music/Ableton/User\ Library/Remote\ Scripts
 git clone https://github.com/rohailaltaf/AbletonOSC.git \
   ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
-cd ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
-git checkout feat/load-instrument
 ```
+
+The fork's `master` accumulates each new handler we add. Individual `feat/<name>` branches live alongside it so each addition can be PR'd to upstream as a single coherent change.
 
 Restart Live, then go to **Preferences → Link, Tempo & MIDI → Control Surface** and select **AbletonOSC**.
 
