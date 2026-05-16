@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import time
+from typing import TypedDict
 
 from mcp.server.fastmcp import FastMCP
 
 from claude_ableton.osc import AbletonClient
+
+
+class CreateTrackResult(TypedDict):
+    track_index: int
+
+
+class LoadInstrumentResult(TypedDict):
+    instrument: str
+    device_index: int
 
 LIVE_TICK_SEC = 0.15
 LOAD_TIMEOUT_SEC = 2.0
@@ -50,7 +60,7 @@ def _num_devices(client: AbletonClient, track_index: int) -> int:
 
 
 @mcp.tool()
-def create_midi_track(name: str | None = None) -> dict[str, int]:
+def create_midi_track(name: str | None = None) -> CreateTrackResult:
     """Create a MIDI track appended at the end of the track list.
 
     Args:
@@ -70,7 +80,7 @@ def create_midi_track(name: str | None = None) -> dict[str, int]:
 
 
 @mcp.tool()
-def load_instrument(track_index: int, instrument: str) -> dict[str, str]:
+def load_instrument(track_index: int, instrument: str) -> LoadInstrumentResult:
     """Load a built-in Live 12 Suite instrument onto a track.
 
     Args:
