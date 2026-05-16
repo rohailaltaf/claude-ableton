@@ -12,16 +12,16 @@ A local MCP server that lets [Claude](https://claude.ai) create tracks, load ins
 
 ## Install
 
-### 1. AbletonOSC
+### 1. AbletonOSC (our fork)
 
-This server talks to Live through [AbletonOSC](https://github.com/ideoforms/AbletonOSC), a Remote Script that exposes Live's Object Model over OSC.
+This server talks to Live through [AbletonOSC](https://github.com/ideoforms/AbletonOSC), a Remote Script that exposes Live's Object Model over OSC. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) that adds OSC handlers AbletonOSC doesn't ship with (e.g. `/live/track/load_instrument`). Each addition lives on its own feature branch so it can be PR'd upstream later — see [DESIGN.md](DESIGN.md).
 
 ```bash
 mkdir -p ~/Music/Ableton/User\ Library/Remote\ Scripts
-git clone https://github.com/ideoforms/AbletonOSC.git \
+git clone https://github.com/rohailaltaf/AbletonOSC.git \
   ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
 cd ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
-git checkout 0ca68214bd62c9b5cb641ca34006cfd70ba94430
+git checkout feat/load-instrument
 ```
 
 Restart Live, then go to **Preferences → Link, Tempo & MIDI → Control Surface** and select **AbletonOSC**.
@@ -70,12 +70,12 @@ With Live open and Claude Desktop running, try:
 
 ## Tools
 
-| Tool | Purpose |
-|---|---|
-| `create_midi_track(name?)` | Add a MIDI track. |
-| `load_instrument(track_index, instrument)` | Load a built-in Live instrument from the allowlist. |
-| `create_clip(track_index, clip_slot, length_bars, notes)` | Create a MIDI clip and write notes. |
-| `chord_progression(track_index, clip_slot, chords, rhythm)` | Write a chord progression. |
+| Tool | Status | Purpose |
+|---|---|---|
+| `create_midi_track(name?)` | shipped | Add a MIDI track. |
+| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument from the allowlist. |
+| `create_clip(track_index, clip_slot, length_bars, notes)` | planned | Create a MIDI clip and write notes. |
+| `chord_progression(track_index, clip_slot, chords, rhythm)` | planned | Write a chord progression. |
 
 See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrument allowlist).
 

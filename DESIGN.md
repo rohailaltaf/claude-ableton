@@ -7,7 +7,7 @@ A local MCP server that lets Claude create tracks, load instruments, and write M
 ## Setup
 
 - **Host**: macOS, Ableton Live 12 Suite (Intro/Standard ship without several instruments in the allowlist).
-- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. Used as-is — we do not fork or modify it. Pinned to a specific commit (see README install instructions).
+- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) because AbletonOSC doesn't ship handlers for some operations we need (notably device loading). The fork's `master` mirrors upstream; each added handler lives on its own feature branch (`feat/<name>`) so it can be PR'd upstream later as a single coherent change.
 - **MCP transport**: stdio. Claude Desktop launches the server as a child process. No network port.
 - **Language**: Python. Same language as AbletonOSC, mature MCP SDK, `python-osc` for the bridge call.
 
@@ -26,12 +26,12 @@ The MCP server speaks OSC bidirectionally: it sends commands to `127.0.0.1:11000
 
 Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 
-| Tool | Purpose |
-|---|---|
-| `create_midi_track(name?)` | Add a MIDI track. Returns track index. |
-| `load_instrument(track_index, instrument)` | Load a built-in Live instrument. `instrument` is an enum (see below). |
-| `create_clip(track_index, clip_slot, length_bars, notes)` | Create a MIDI clip and write notes. |
-| `chord_progression(track_index, clip_slot, chords, rhythm)` | Higher-level helper. Takes chord symbols and a rhythm pattern, expands to notes, calls `create_clip`. |
+| Tool | Status | Purpose |
+|---|---|---|
+| `create_midi_track(name?)` | shipped | Add a MIDI track. Returns track index. |
+| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument. `instrument` is one of the allowlist keys (see below); we resolve to the browser name and call our fork's `/live/track/load_instrument`. |
+| `create_clip(track_index, clip_slot, length_bars, notes)` | planned | Create a MIDI clip and write notes. |
+| `chord_progression(track_index, clip_slot, chords, rhythm)` | planned | Higher-level helper. Takes chord symbols and a rhythm pattern, expands to notes, calls `create_clip`. |
 
 ### Conventions
 

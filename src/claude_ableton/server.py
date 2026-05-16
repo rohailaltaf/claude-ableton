@@ -9,6 +9,24 @@ from mcp.server.fastmcp import FastMCP
 from claude_ableton.osc import AbletonClient
 
 LIVE_TICK_SEC = 0.15
+LOAD_TIMEOUT_SEC = 2.0
+LOAD_POLL_SEC = 0.1
+
+# Allowlist of built-in Live 12 Suite instruments.
+# Keys are lowercase identifiers exposed to callers; values are the exact
+# names of items under app.browser.instruments in Live (as the AbletonOSC
+# /live/track/load_instrument handler matches by name).
+INSTRUMENT_MAP: dict[str, str] = {
+    "operator": "Operator",
+    "wavetable": "Wavetable",
+    "drift": "Drift",
+    "meld": "Meld",
+    "analog": "Analog",
+    "electric": "Electric",
+    "tension": "Tension",
+    "simpler": "Simpler",
+    "collision": "Collision",
+}
 
 mcp = FastMCP("ableton")
 _client: AbletonClient | None = None
@@ -23,6 +41,12 @@ def _get_client() -> AbletonClient:
         _client.ping_or_raise()
         _pinged = True
     return _client
+
+
+def _num_devices(client: AbletonClient, track_index: int) -> int:
+    reply = client.query("/live/track/get/num_devices", track_index)
+    # reply shape: (track_id, num_devices)
+    return int(reply[1])
 
 
 @mcp.tool()
@@ -43,6 +67,49 @@ def create_midi_track(name: str | None = None) -> dict[str, int]:
     if name:
         client.send("/live/track/set/name", new_index, name)
     return {"track_index": new_index}
+
+
+@mcp.tool()
+def load_instrument(track_index: int, instrument: str) -> dict[str, str]:
+    """Load a built-in Live 12 Suite instrument onto a track.
+
+    Args:
+        track_index: zero-based index of the target track.
+        instrument: instrument identifier from the allowlist. One of:
+            operator, wavetable, drift, meld, analog, electric, tension,
+            simpler, collision. Case-insensitive.
+
+    Returns:
+        Dict with `instrument` (the loaded identifier) and `device_index`
+        (zero-based index of the newly added device on the track).
+
+    Raises:
+        ValueError: if `instrument` is not in the allowlist.
+        RuntimeError: if the device does not appear on the track within
+            the load timeout (2s).
+    """
+    client = _get_client()
+    key = instrument.lower()
+    browser_name = INSTRUMENT_MAP.get(key)
+    if browser_name is None:
+        raise ValueError(
+            f"Unknown instrument {instrument!r}. "
+            f"Allowed: {sorted(INSTRUMENT_MAP)}"
+        )
+
+    devices_before = _num_devices(client, track_index)
+    client.send("/live/track/load_instrument", track_index, browser_name)
+
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        if _num_devices(client, track_index) > devices_before:
+            return {"instrument": key, "device_index": devices_before}
+
+    raise RuntimeError(
+        f"Load timed out: {instrument!r} did not appear on track "
+        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s."
+    )
 
 
 def main() -> None:
