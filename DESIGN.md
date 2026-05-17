@@ -30,7 +30,9 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 |---|---|---|
 | `create_midi_track(name?)` | shipped | Add a MIDI track. Returns track index. |
 | `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument. `instrument` is one of the allowlist keys (see below); we resolve to the browser name and call our fork's `/live/track/load_instrument`. |
-| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision; assumes 4/4 time. |
+| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a Session-view MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision; assumes 4/4 time. |
+| `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip (`/live/clip_slot/fire`). Fire-and-forget. |
+| `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip (`/live/clip/stop`). Fire-and-forget. |
 | `chord_progression(track_index, clip_slot, chords, rhythm)` | planned | Higher-level helper. Takes chord symbols and a rhythm pattern, expands to notes, calls `create_clip`. |
 
 ### Conventions

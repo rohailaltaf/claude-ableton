@@ -33,6 +33,12 @@ class CreateClipResult(TypedDict):
     note_count: int
 
 
+class ClipActionResult(TypedDict):
+    track_index: int
+    clip_slot: int
+    action: str
+
+
 BEATS_PER_BAR = 4  # MVP assumes 4/4 time
 TIME_QUANTUM = 1e-6  # round note times to avoid LOM denormal issues
 
@@ -235,6 +241,37 @@ def create_clip(
         "length_beats": length_beats,
         "note_count": len(notes),
     }
+
+
+@mcp.tool()
+def play_clip(track_index: int, clip_slot: int) -> ClipActionResult:
+    """Trigger playback of the clip in the given clip slot (Session view).
+
+    Fire-and-forget: no confirmation that playback actually started. If the
+    slot is empty, Live silently does nothing.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+    """
+    client = _get_client()
+    client.send("/live/clip_slot/fire", track_index, clip_slot)
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "fired"}
+
+
+@mcp.tool()
+def stop_clip(track_index: int, clip_slot: int) -> ClipActionResult:
+    """Stop playback of the clip in the given clip slot.
+
+    Fire-and-forget. If the clip isn't playing, this is a no-op.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+    """
+    client = _get_client()
+    client.send("/live/clip/stop", track_index, clip_slot)
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "stopped"}
 
 
 def main() -> None:
