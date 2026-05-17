@@ -78,6 +78,49 @@ class RhythmStep(TypedDict):
     duration_beat: float
 
 
+class TrackInfo(TypedDict):
+    track_index: int
+    name: str
+    is_midi: bool
+    num_devices: int
+
+
+class ClipSlotInfo(TypedDict):
+    clip_slot: int
+    has_clip: bool
+    name: str | None
+    length_beats: float | None
+
+
+class DeviceInfo(TypedDict):
+    device_index: int
+    name: str
+    type_id: int  # 0 = audio_effect, 1 = instrument, 2 = midi_effect
+    class_name: str
+
+
+class DeviceParameterInfo(TypedDict):
+    parameter_index: int
+    name: str
+    value: float
+    min: float
+    max: float
+    is_quantized: bool
+
+
+class SetTrackPropertyResult(TypedDict):
+    track_index: int
+    property: str
+    value: float
+
+
+class SetDeviceParameterResult(TypedDict):
+    track_index: int
+    device_index: int
+    parameter_index: int
+    value: float
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -648,6 +691,264 @@ def delete_clip(track_index: int, clip_slot: int) -> ClipActionResult:
     client = _get_client()
     client.send("/live/clip_slot/delete_clip", track_index, clip_slot)
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "deleted"}
+
+
+#--------------------------------------------------------------------------------
+# State visibility — let the LLM see what's already in the project.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_tracks() -> list[TrackInfo]:
+    """List every track in the song with its key properties.
+
+    Returns one entry per track with its zero-based index, name, whether it
+    accepts MIDI input, and how many devices it has. Use this before any
+    "fix the bass" / "swap the lead" workflow — you need to know which
+    track index corresponds to which name.
+    """
+    client = _get_client()
+    (n,) = client.query("/live/song/get/num_tracks")
+    tracks: list[TrackInfo] = []
+    for i in range(int(n)):
+        name_reply = client.query("/live/track/get/name", i)
+        midi_reply = client.query("/live/track/get/has_midi_input", i)
+        ndev_reply = client.query("/live/track/get/num_devices", i)
+        tracks.append({
+            "track_index": i,
+            "name": str(name_reply[1]),
+            "is_midi": bool(midi_reply[1]),
+            "num_devices": int(ndev_reply[1]),
+        })
+    return tracks
+
+
+@mcp.tool()
+def list_clips(track_index: int) -> list[ClipSlotInfo]:
+    """List clip slots on a track with their occupancy.
+
+    Returns one entry per Session-view clip slot. Empty slots have
+    `has_clip=False` and `name=None`. Useful for "what's already on the
+    Bass track?" before creating or deleting clips.
+
+    Args:
+        track_index: zero-based track index.
+    """
+    client = _get_client()
+    (n_scenes,) = client.query("/live/song/get/num_scenes")
+    slots: list[ClipSlotInfo] = []
+    for s in range(int(n_scenes)):
+        has_reply = client.query("/live/clip_slot/get/has_clip", track_index, s)
+        has = bool(has_reply[2])
+        if has:
+            name_reply = client.query("/live/clip/get/name", track_index, s)
+            length_reply = client.query("/live/clip/get/length", track_index, s)
+            slots.append({
+                "clip_slot": s,
+                "has_clip": True,
+                "name": str(name_reply[2]),
+                "length_beats": float(length_reply[2]),
+            })
+        else:
+            slots.append({
+                "clip_slot": s,
+                "has_clip": False,
+                "name": None,
+                "length_beats": None,
+            })
+    return slots
+
+
+@mcp.tool()
+def get_track_devices(track_index: int) -> list[DeviceInfo]:
+    """List the devices (instrument + effects) on a track.
+
+    Returns one entry per device with its index, name, type, and Live
+    class name. type_id is 0 (audio_effect), 1 (instrument), or 2
+    (midi_effect). Use this to discover device indices before calling
+    `delete_device` or `get_device_parameters`.
+
+    Args:
+        track_index: zero-based track index.
+    """
+    client = _get_client()
+    ndev_reply = client.query("/live/track/get/num_devices", track_index)
+    n = int(ndev_reply[1])
+    if n == 0:
+        return []
+    name_reply = client.query("/live/track/get/devices/name", track_index)
+    type_reply = client.query("/live/track/get/devices/type", track_index)
+    class_reply = client.query("/live/track/get/devices/class_name", track_index)
+    names = name_reply[1:]
+    types = type_reply[1:]
+    classes = class_reply[1:]
+    return [
+        {
+            "device_index": i,
+            "name": str(names[i]),
+            "type_id": int(types[i]),
+            "class_name": str(classes[i]),
+        }
+        for i in range(n)
+    ]
+
+
+#--------------------------------------------------------------------------------
+# Mixer — track-level volume / pan / mute / solo.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def set_track_volume(track_index: int, volume: float) -> SetTrackPropertyResult:
+    """Set track volume.
+
+    Args:
+        track_index: zero-based track index.
+        volume: Live's normalized volume in [0.0, 1.0]. ~0.85 is 0 dB unity
+            gain; 1.0 is +6 dB.
+    """
+    if not (0.0 <= volume <= 1.0):
+        raise ValueError(f"volume {volume} out of range 0.0-1.0")
+    client = _get_client()
+    client.send("/live/track/set/volume", track_index, float(volume))
+    return {"track_index": track_index, "property": "volume", "value": float(volume)}
+
+
+@mcp.tool()
+def set_track_pan(track_index: int, pan: float) -> SetTrackPropertyResult:
+    """Set track pan.
+
+    Args:
+        track_index: zero-based track index.
+        pan: -1.0 (full left) to 1.0 (full right). 0.0 is centered.
+    """
+    if not (-1.0 <= pan <= 1.0):
+        raise ValueError(f"pan {pan} out of range -1.0 to 1.0")
+    client = _get_client()
+    client.send("/live/track/set/panning", track_index, float(pan))
+    return {"track_index": track_index, "property": "pan", "value": float(pan)}
+
+
+@mcp.tool()
+def set_track_mute(track_index: int, mute: bool) -> SetTrackPropertyResult:
+    """Mute or unmute a track.
+
+    Args:
+        track_index: zero-based track index.
+        mute: True to mute, False to unmute.
+    """
+    client = _get_client()
+    client.send("/live/track/set/mute", track_index, int(bool(mute)))
+    return {"track_index": track_index, "property": "mute", "value": float(bool(mute))}
+
+
+@mcp.tool()
+def set_track_solo(track_index: int, solo: bool) -> SetTrackPropertyResult:
+    """Solo or un-solo a track.
+
+    Args:
+        track_index: zero-based track index.
+        solo: True to solo, False to un-solo.
+    """
+    client = _get_client()
+    client.send("/live/track/set/solo", track_index, int(bool(solo)))
+    return {"track_index": track_index, "property": "solo", "value": float(bool(solo))}
+
+
+#--------------------------------------------------------------------------------
+# Device parameters — sound design knobs on any loaded device.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_device_parameters(
+    track_index: int, device_index: int
+) -> list[DeviceParameterInfo]:
+    """List a device's exposed parameters with current value + range.
+
+    Returns one entry per macro/control: parameter_index, name, current
+    value, min, max, is_quantized (whether the value snaps to discrete
+    steps — typical for switches and dropdown-style selectors).
+
+    Use this to discover parameter indices before calling
+    `set_device_parameter`. Most synths expose 8 macro controls at the
+    top of the list; sampler devices and effects may expose dozens.
+
+    Args:
+        track_index: zero-based track index.
+        device_index: zero-based device index on the track.
+    """
+    client = _get_client()
+    n_reply = client.query(
+        "/live/device/get/num_parameters", track_index, device_index
+    )
+    n = int(n_reply[2])
+    if n == 0:
+        return []
+    name_reply = client.query(
+        "/live/device/get/parameters/name", track_index, device_index
+    )
+    value_reply = client.query(
+        "/live/device/get/parameters/value", track_index, device_index
+    )
+    min_reply = client.query(
+        "/live/device/get/parameters/min", track_index, device_index
+    )
+    max_reply = client.query(
+        "/live/device/get/parameters/max", track_index, device_index
+    )
+    quant_reply = client.query(
+        "/live/device/get/parameters/is_quantized", track_index, device_index
+    )
+    names = name_reply[2:]
+    values = value_reply[2:]
+    mins = min_reply[2:]
+    maxs = max_reply[2:]
+    quants = quant_reply[2:]
+    return [
+        {
+            "parameter_index": i,
+            "name": str(names[i]),
+            "value": float(values[i]),
+            "min": float(mins[i]),
+            "max": float(maxs[i]),
+            "is_quantized": bool(quants[i]),
+        }
+        for i in range(n)
+    ]
+
+
+@mcp.tool()
+def set_device_parameter(
+    track_index: int,
+    device_index: int,
+    parameter_index: int,
+    value: float,
+) -> SetDeviceParameterResult:
+    """Set a single device parameter by index.
+
+    Use `get_device_parameters` first to discover the parameter index and
+    its valid range. Passing a value outside [min, max] silently clamps
+    inside Live; no validation here.
+
+    Args:
+        track_index: zero-based track index.
+        device_index: zero-based device index on the track.
+        parameter_index: zero-based parameter index from
+            `get_device_parameters`.
+        value: target value (within the parameter's [min, max] range).
+    """
+    client = _get_client()
+    client.send(
+        "/live/device/set/parameter/value",
+        track_index, device_index, parameter_index, float(value),
+    )
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "parameter_index": parameter_index,
+        "value": float(value),
+    }
 
 
 def main() -> None:

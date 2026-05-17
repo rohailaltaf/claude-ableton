@@ -84,6 +84,15 @@ With Live open and Claude Desktop running, try:
 | `delete_clip(track_index, clip_slot)` | shipped | Delete a clip from a slot (destructive, Undo-able). |
 | `fire_scene(scene_index)` | shipped | Fire all clips in a scene (row), locking multiple tracks to the same downbeat. |
 | `set_tempo(bpm)` | shipped | Set the project tempo (20-999 BPM). |
+| `list_tracks()` | shipped | List every track with index, name, MIDI/audio, device count. |
+| `list_clips(track_index)` | shipped | List clip slots on a track with occupancy, name, length. |
+| `get_track_devices(track_index)` | shipped | List devices on a track with index, name, type, class name. |
+| `set_track_volume(track_index, volume)` | shipped | Set track volume (0.0–1.0; ~0.85 = 0 dB). |
+| `set_track_pan(track_index, pan)` | shipped | Set track pan (-1.0 to 1.0). |
+| `set_track_mute(track_index, mute)` | shipped | Mute/unmute a track. |
+| `set_track_solo(track_index, solo)` | shipped | Solo/un-solo a track. |
+| `get_device_parameters(track_index, device_index)` | shipped | List a device's parameters with current value + range. |
+| `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Set one device parameter by index. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |

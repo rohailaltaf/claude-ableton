@@ -40,6 +40,12 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `delete_clip(track_index, clip_slot)` | shipped | Delete a clip via `/live/clip_slot/delete_clip`. Pairs with `create_clip` for replace-in-place. |
 | `fire_scene(scene_index)` | shipped | Fire all clips in a scene via `/live/scene/fire`. Locks downbeats across tracks. |
 | `set_tempo(bpm)` | shipped | Set the project tempo via `/live/song/set/tempo`. Validates 20-999 BPM. |
+| `list_tracks()` | shipped | Iterates `num_tracks` queries to collect name/has_midi_input/num_devices per track. State-visibility primitive. |
+| `list_clips(track_index)` | shipped | Iterates clip slots; queries `has_clip` + `name` + `length` per occupied slot. |
+| `get_track_devices(track_index)` | shipped | Wraps `/live/track/get/num_devices` + `devices/{name,type,class_name}` lists. |
+| `set_track_volume / set_track_pan / set_track_mute / set_track_solo` | shipped | Mixer wrappers around `/live/track/set/{volume,panning,mute,solo}`. Fire-and-forget. |
+| `get_device_parameters(track_index, device_index)` | shipped | Lists each parameter's name/value/min/max/is_quantized for sound design. |
+| `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Single-parameter setter; LLM should call `get_device_parameters` first to discover indices and ranges. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |
