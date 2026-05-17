@@ -482,6 +482,69 @@ def list_presets(path: str = "") -> ListPresetsResult:
 
 
 @mcp.tool()
+def list_drum_kits(path: str = "") -> ListPresetsResult:
+    """List child names in Live's drum browser at the given path.
+
+    Walks `app.browser.drums`. With an empty path, returns the top-level
+    drum categories (Kit-Core 909, Kit-Core 808, etc., depending on what
+    ships with your Live install). With a path like "Kit-Core 909" returns
+    the kits inside that category. Slash-separated.
+
+    Empty children list means the path doesn't exist (or has no children).
+
+    Args:
+        path: slash-separated drum-browser path; "" for top-level.
+    """
+    client = _get_client()
+    reply = client.query("/live/browser/list_drum_kits", path)
+    children = [str(x) for x in reply[1:]]
+    return {"path": str(reply[0]), "children": children}
+
+
+@mcp.tool()
+def load_drum_kit(track_index: int, kit_path: str) -> LoadPresetResult:
+    """Load a complete drum kit onto a track by drum-browser path.
+
+    Path is slash-separated from `app.browser.drums` — e.g.
+    "Kit-Core 909/909 Kit". Use list_drum_kits to discover paths.
+    The result is a Drum Rack with samples mapped to standard pad pitches
+    (kick on C1=36, snare on D1=38, etc.), so a single track with one MIDI
+    clip can drive the whole kit.
+
+    Args:
+        track_index: zero-based track index.
+        kit_path: slash-separated browser path to the kit.
+
+    Returns:
+        Dict with track_index, the kit path (under `preset_path` for shape
+        symmetry with load_preset), and the device_index of the loaded kit.
+
+    Raises:
+        RuntimeError: if no device appears on the track within 2s
+            (probably means the path doesn't exist or isn't loadable).
+    """
+    client = _get_client()
+    devices_before = _num_devices(client, track_index)
+    client.send("/live/track/load_drum_kit", track_index, kit_path)
+
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        if _num_devices(client, track_index) > devices_before:
+            return {
+                "track_index": track_index,
+                "preset_path": kit_path,
+                "device_index": devices_before,
+            }
+
+    raise RuntimeError(
+        f"Load timed out: drum kit {kit_path!r} did not appear on track "
+        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
+        "exist or may not be loadable; try list_drum_kits to verify."
+    )
+
+
+@mcp.tool()
 def load_preset(track_index: int, preset_path: str) -> LoadPresetResult:
     """Load a specific instrument preset onto a track by browser path.
 
