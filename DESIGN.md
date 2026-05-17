@@ -35,6 +35,8 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a Session-view MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision; assumes 4/4 time. |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip (`/live/clip_slot/fire`). Fire-and-forget. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip (`/live/clip/stop`). Fire-and-forget. |
+| `fire_scene(scene_index)` | shipped | Fire all clips in a scene via `/live/scene/fire`. Locks downbeats across tracks. |
+| `set_tempo(bpm)` | shipped | Set the project tempo via `/live/song/set/tempo`. Validates 20-999 BPM. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |
@@ -63,8 +65,7 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 
 - Audio tracks, audio clips, audio routing
 - Effects, device chains beyond the instrument slot
-- Tempo, time signature, transport control
-- Free-form browser navigation (only allowlisted instruments)
+- Time signature, full transport control (play/stop/position) — though `set_tempo` and `fire_scene` shipped post-MVP
 - Saving, loading, or exporting project files
 - User instrument libraries, third-party packs, M4L devices
 

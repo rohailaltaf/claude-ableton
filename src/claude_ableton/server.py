@@ -63,6 +63,16 @@ class LoadPresetResult(TypedDict):
     device_index: int
 
 
+class FireSceneResult(TypedDict):
+    scene_index: int
+    action: str
+
+
+class SetTempoResult(TypedDict):
+    bpm: float
+    action: str
+
+
 class RhythmStep(TypedDict):
     start_beat: float
     duration_beat: float
@@ -398,6 +408,38 @@ def chord_progression(
         name = " | ".join(chords)
 
     return _create_clip(track_index, clip_slot, length_bars, notes, name)
+
+
+@mcp.tool()
+def fire_scene(scene_index: int) -> FireSceneResult:
+    """Fire all clips in the given scene (row).
+
+    Locks multiple tracks to the same downbeat, useful when starting
+    a chord clip and a lead clip together. Fire-and-forget.
+
+    Args:
+        scene_index: zero-based scene (row) index.
+    """
+    client = _get_client()
+    client.send("/live/scene/fire", scene_index)
+    return {"scene_index": scene_index, "action": "fired"}
+
+
+@mcp.tool()
+def set_tempo(bpm: float) -> SetTempoResult:
+    """Set the project tempo.
+
+    Args:
+        bpm: target tempo in BPM. Live's valid range is 20-999.
+
+    Raises:
+        ValueError: if bpm is outside 20-999.
+    """
+    if not (20.0 <= bpm <= 999.0):
+        raise ValueError(f"bpm {bpm} out of range 20-999")
+    client = _get_client()
+    client.send("/live/song/set/tempo", float(bpm))
+    return {"bpm": float(bpm), "action": "set"}
 
 
 @mcp.tool()

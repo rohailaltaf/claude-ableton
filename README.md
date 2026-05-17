@@ -79,6 +79,8 @@ With Live open and Claude Desktop running, try:
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes (Session view). |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |
+| `fire_scene(scene_index)` | shipped | Fire all clips in a scene (row), locking multiple tracks to the same downbeat. |
+| `set_tempo(bpm)` | shipped | Set the project tempo (20-999 BPM). |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
@@ -89,7 +91,7 @@ See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrum
 
 - **Session view only.** Created clips live in the Session view grid, not the Arrangement view. Switch Live to Session view (Tab key) to see and trigger them.
 - **4/4 time assumed.** `length_bars` is multiplied by 4 to get beats; we don't read or set the project time signature.
-- **No transport control.** We can fire individual clips but can't start/stop the global transport, set tempo, or set the time signature.
+- **Partial transport control.** We can fire clips and scenes, and set tempo. Can't yet start/stop the global transport from a tool, change time signature, or read playback position.
 - **No audio tracks, no effects, no routing.** Only MIDI tracks with a single built-in instrument.
 - **Instrument allowlist** is limited to the 9 built-in Live 12 Suite instruments listed in [DESIGN.md](DESIGN.md). Intro/Standard editions are missing several.
 
