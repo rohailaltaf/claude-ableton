@@ -9,6 +9,7 @@ authors = [{ name = "Rohail Altaf" }]
 dependencies = [
     "python-osc>=1.9",
     "mcp>=1.0",
+    "pychord>=1.2",
 ]
 
 [project.scripts]

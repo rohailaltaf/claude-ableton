@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import time
 from typing import TypedDict
 
 from mcp.server.fastmcp import FastMCP
+from pychord import Chord
 
 from claude_ableton.osc import AbletonClient
 
@@ -37,6 +39,19 @@ class ClipActionResult(TypedDict):
     track_index: int
     clip_slot: int
     action: str
+
+
+class RhythmStep(TypedDict):
+    start_beat: float
+    duration_beat: float
+
+
+# Pitch-class lookup for chord component note names (sharps & flats).
+_PITCH_CLASS: dict[str, int] = {
+    "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
+    "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
+    "A": 9, "A#": 10, "Bb": 10, "B": 11,
+}
 
 
 BEATS_PER_BAR = 4  # MVP assumes 4/4 time
@@ -166,36 +181,14 @@ def _validate_note(note: Note, index: int) -> None:
         )
 
 
-@mcp.tool()
-def create_clip(
+def _create_clip(
     track_index: int,
     clip_slot: int,
     length_bars: float,
-    notes: list[Note] | None = None,
-    name: str | None = None,
+    notes: list[Note] | None,
+    name: str | None,
 ) -> CreateClipResult:
-    """Create a MIDI clip in the given clip slot and optionally write notes.
-
-    Assumes 4/4 time (4 beats per bar). If the slot already contains a clip,
-    raises rather than overwriting.
-
-    Args:
-        track_index: zero-based track index. Track must be a MIDI track.
-        clip_slot: zero-based clip slot (scene) index.
-        length_bars: clip length in bars (must be > 0).
-        notes: optional list of notes to write. Each note:
-            - pitch: MIDI note number 0-127 (60 = C4 in Ableton)
-            - start_beat: beats from clip start (>= 0)
-            - duration_beat: beats (> 0)
-            - velocity: MIDI velocity 1-127 (0 means note-off, rejected)
-        name: optional clip name.
-
-    Returns:
-        Dict with track_index, clip_slot, length_beats, note_count.
-
-    Raises:
-        ValueError: invalid length, slot collision, or invalid note.
-    """
+    """Implementation shared by create_clip and chord_progression."""
     if length_bars <= 0:
         raise ValueError(f"length_bars must be > 0 (got {length_bars})")
 
@@ -205,7 +198,6 @@ def create_clip(
 
     client = _get_client()
 
-    # Collision check
     has = client.query("/live/clip_slot/get/has_clip", track_index, clip_slot)
     if bool(has[2]):
         raise ValueError(
@@ -241,6 +233,149 @@ def create_clip(
         "length_beats": length_beats,
         "note_count": len(notes),
     }
+
+
+@mcp.tool()
+def create_clip(
+    track_index: int,
+    clip_slot: int,
+    length_bars: float,
+    notes: list[Note] | None = None,
+    name: str | None = None,
+) -> CreateClipResult:
+    """Create a MIDI clip in the given clip slot and optionally write notes.
+
+    Assumes 4/4 time (4 beats per bar). If the slot already contains a clip,
+    raises rather than overwriting.
+
+    Args:
+        track_index: zero-based track index. Track must be a MIDI track.
+        clip_slot: zero-based clip slot (scene) index.
+        length_bars: clip length in bars (must be > 0).
+        notes: optional list of notes to write. Each note:
+            - pitch: MIDI note number 0-127 (60 = C4 in Ableton)
+            - start_beat: beats from clip start (>= 0)
+            - duration_beat: beats (> 0)
+            - velocity: MIDI velocity 1-127 (0 means note-off, rejected)
+        name: optional clip name.
+
+    Returns:
+        Dict with track_index, clip_slot, length_beats, note_count.
+
+    Raises:
+        ValueError: invalid length, slot collision, or invalid note.
+    """
+    return _create_clip(track_index, clip_slot, length_bars, notes, name)
+
+
+def _chord_to_midi(components: list[str], octave: int) -> list[int]:
+    """Convert pychord components (note names) to MIDI pitches in root position.
+
+    The root is placed at the given octave; subsequent chord tones are placed
+    ascending from the root (bumped up an octave if their pitch class falls
+    below the root's MIDI pitch).
+    """
+    base = 12 * (octave + 1)
+    try:
+        root_pc = _PITCH_CLASS[components[0]]
+    except KeyError as e:
+        raise ValueError(f"Unknown note name in chord components: {e}") from e
+    root_midi = base + root_pc
+
+    midi_notes = [root_midi]
+    for component in components[1:]:
+        try:
+            pc = _PITCH_CLASS[component]
+        except KeyError as e:
+            raise ValueError(f"Unknown note name in chord components: {e}") from e
+        pitch = base + pc
+        while pitch < root_midi:
+            pitch += 12
+        midi_notes.append(pitch)
+    return midi_notes
+
+
+@mcp.tool()
+def chord_progression(
+    track_index: int,
+    clip_slot: int,
+    chords: list[str],
+    rhythm: list[RhythmStep] | None = None,
+    name: str | None = None,
+    velocity: int = 90,
+    octave: int = 4,
+) -> CreateClipResult:
+    """Write a chord progression into a clip as block chords.
+
+    Each chord symbol is parsed (via pychord) and voiced in naïve root
+    position from the given octave. By default each chord occupies one bar;
+    pass `rhythm` to control timing explicitly.
+
+    Args:
+        track_index: target MIDI track index.
+        clip_slot: target clip slot (must be empty).
+        chords: chord symbols, e.g. `["Cmaj7", "Am7", "Fmaj7", "G7"]`.
+            Supports maj/min/7/maj7/m7/dim/aug and common extensions; see
+            pychord for the full grammar.
+        rhythm: optional list of `{start_beat, duration_beat}` aligned with
+            chords (same length). If omitted, each chord lasts one bar
+            (4 beats), played in order.
+        name: optional clip name. Defaults to chord symbols joined with " | ".
+        velocity: MIDI velocity for every note (default 90).
+        octave: octave for the chord roots (default 4 → C4 = MIDI 60).
+
+    Returns:
+        Same shape as create_clip.
+
+    Raises:
+        ValueError: mismatched chords/rhythm length, unparseable chord
+            symbol, invalid velocity, or slot collision.
+    """
+    if not chords:
+        raise ValueError("chords must not be empty")
+    if not (1 <= velocity <= 127):
+        raise ValueError(f"velocity {velocity} out of range 1-127")
+
+    if rhythm is None:
+        rhythm = [
+            {"start_beat": float(i * BEATS_PER_BAR),
+             "duration_beat": float(BEATS_PER_BAR)}
+            for i in range(len(chords))
+        ]
+    if len(chords) != len(rhythm):
+        raise ValueError(
+            f"chords ({len(chords)}) and rhythm ({len(rhythm)}) must be the same length"
+        )
+
+    notes: list[Note] = []
+    max_end = 0.0
+    for i, (symbol, step) in enumerate(zip(chords, rhythm)):
+        try:
+            components = Chord(symbol).components()
+        except Exception as e:
+            raise ValueError(f"chord[{i}] {symbol!r} could not be parsed: {e}") from e
+
+        start = float(step["start_beat"])
+        duration = float(step["duration_beat"])
+        if start < 0:
+            raise ValueError(f"rhythm[{i}]: start_beat {start} must be >= 0")
+        if duration <= 0:
+            raise ValueError(f"rhythm[{i}]: duration_beat {duration} must be > 0")
+
+        for pitch in _chord_to_midi(components, octave):
+            notes.append({
+                "pitch": pitch,
+                "start_beat": start,
+                "duration_beat": duration,
+                "velocity": velocity,
+            })
+        max_end = max(max_end, start + duration)
+
+    length_bars = max(1, math.ceil(max_end / BEATS_PER_BAR))
+    if name is None:
+        name = " | ".join(chords)
+
+    return _create_clip(track_index, clip_slot, length_bars, notes, name)
 
 
 @mcp.tool()

@@ -131,12 +131,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
+    { name = "pychord" },
     { name = "python-osc" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.0" },
+    { name = "pychord", specifier = ">=1.2" },
     { name = "python-osc", specifier = ">=1.9" },
 ]
 
@@ -338,6 +340,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/38/83/d1efe7c2980d8a3afa476f4e3d42d53dd54c0ab94c27bee5d755b45c8b73/mcp-1.27.1.tar.gz", hash = "sha256:0f47e1820f8f8f941466b39749eb1d1839a04caddca2bc60e9d46e8a99914924", size = 608458, upload-time = "2026-05-08T16:50:12.601Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/73/42d9596facebdb533b7f0b86c1b0364ef350d1f8ba78b1052e8a58b48b65/mcp-1.27.1-py3-none-any.whl", hash = "sha256:1af3c4203b329430fde7a87b4fcb6392a041f5cb851fd68fc674016ab4e7c06f", size = 216260, upload-time = "2026-05-08T16:50:10.547Z" },
+]
+
+[[package]]
+name = "pychord"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/c5/83521bcdbc18572b1d44d9d7c021c7936b0e6353df3bdcc5a1d8b044b887/pychord-1.4.0.tar.gz", hash = "sha256:97ee54ab54a4478fc7330bf399cd5b8eba41158f55c502ea0ef9e21a55a33d1b", size = 18366, upload-time = "2026-04-29T06:53:07.192Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/81/94a57511c865f6290d436c8e648f9a89e462f10188c139bdb1616a0c7206/pychord-1.4.0-py3-none-any.whl", hash = "sha256:18f06e0dd72ffd2ffd1ec9354489fa9c4bbbc49ffcb7afbb32458c317ff99d54", size = 14271, upload-time = "2026-04-29T06:53:06.227Z" },
 ]
 
 [[package]]
