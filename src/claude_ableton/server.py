@@ -174,6 +174,17 @@ class SetSendResult(TypedDict):
     value: float
 
 
+class AddNotesResult(TypedDict):
+    track_index: int
+    clip_slot: int
+    added_count: int
+
+
+class RemoveNotesResult(TypedDict):
+    track_index: int
+    clip_slot: int
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1325,6 +1336,143 @@ def get_sends(track_index: int) -> list[SendInfo]:
         # reply: (track_index, send_index, value)
         sends.append({"send_index": i, "value": float(reply[2])})
     return sends
+
+
+#--------------------------------------------------------------------------------
+# Clip editing — get / add / remove notes on existing clips, so we can
+# iterate on patterns without delete-and-recreate cycles.
+#--------------------------------------------------------------------------------
+
+# AbletonOSC's get/remove notes use a wide default range to mean "everything".
+# Mirror that convention in our MCP layer.
+_ALL_PITCH_START = 0
+_ALL_PITCH_SPAN = 128
+_ALL_BEAT_START = -8192.0
+_ALL_BEAT_SPAN = 16384.0
+
+
+@mcp.tool()
+def get_notes(
+    track_index: int,
+    clip_slot: int,
+    start_pitch: int = _ALL_PITCH_START,
+    pitch_span: int = _ALL_PITCH_SPAN,
+    start_beat: float = _ALL_BEAT_START,
+    beat_span: float = _ALL_BEAT_SPAN,
+) -> list[Note]:
+    """Read notes from an existing clip, optionally filtered by range.
+
+    Default range covers all possible notes. Use `start_pitch`/`pitch_span`
+    to filter by MIDI pitch range, `start_beat`/`beat_span` by time range.
+    Filtering is inclusive of the start, exclusive of (start+span).
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+        start_pitch: lowest MIDI pitch to include (default 0).
+        pitch_span: number of pitches to span (default 128 = all).
+        start_beat: earliest beat to include (default -8192, effectively all).
+        beat_span: number of beats to span (default 16384, effectively all).
+
+    Returns:
+        List of notes in the clip matching the filter.
+    """
+    client = _get_client()
+    reply = client.query(
+        "/live/clip/get/notes",
+        track_index, clip_slot,
+        int(start_pitch), int(pitch_span),
+        float(start_beat), float(beat_span),
+    )
+    # reply: (track_index, clip_slot, pitch, start, duration, velocity, mute, ...)
+    # Each note = 5 values; mute is dropped from our Note shape.
+    notes: list[Note] = []
+    for i in range(2, len(reply), 5):
+        notes.append({
+            "pitch": int(reply[i]),
+            "start_beat": float(reply[i + 1]),
+            "duration_beat": float(reply[i + 2]),
+            "velocity": int(reply[i + 3]),
+        })
+    return notes
+
+
+@mcp.tool()
+def add_notes_to_clip(
+    track_index: int,
+    clip_slot: int,
+    notes: list[Note],
+) -> AddNotesResult:
+    """Add notes to an existing clip without removing what's already there.
+
+    Use this to iterate ("make the bassline 2x denser", "add ghost notes
+    between the kicks") without delete+recreate. For a full replacement,
+    use `delete_clip` + `create_clip` instead.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+        notes: list of notes to add. Same shape as `create_clip`.
+
+    Raises:
+        ValueError: invalid note (pitch/velocity/timing).
+    """
+    if not notes:
+        raise ValueError("notes list is empty")
+    for i, note in enumerate(notes):
+        _validate_note(note, i)
+
+    client = _get_client()
+    flat: list[float | int | bool] = [track_index, clip_slot]
+    for note in notes:
+        flat.extend([
+            int(note["pitch"]),
+            round(float(note["start_beat"]) / TIME_QUANTUM) * TIME_QUANTUM,
+            round(float(note["duration_beat"]) / TIME_QUANTUM) * TIME_QUANTUM,
+            int(note["velocity"]),
+            False,  # mute
+        ])
+    client.send("/live/clip/add/notes", *flat)
+    time.sleep(LIVE_TICK_SEC)
+    return {
+        "track_index": track_index,
+        "clip_slot": clip_slot,
+        "added_count": len(notes),
+    }
+
+
+@mcp.tool()
+def remove_notes(
+    track_index: int,
+    clip_slot: int,
+    start_pitch: int = _ALL_PITCH_START,
+    pitch_span: int = _ALL_PITCH_SPAN,
+    start_beat: float = _ALL_BEAT_START,
+    beat_span: float = _ALL_BEAT_SPAN,
+) -> RemoveNotesResult:
+    """Remove notes from a clip in a pitch/time range. Default removes all.
+
+    The range defines a rectangle in the piano roll; notes whose start
+    falls inside get removed. Pass narrower ranges to surgically delete
+    specific note groups (e.g. all hi-hats: `start_pitch=42`, `pitch_span=1`).
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+        start_pitch: lowest MIDI pitch to remove (default 0).
+        pitch_span: number of pitches to span (default 128 = all).
+        start_beat: earliest beat to remove from (default -8192).
+        beat_span: number of beats to span (default 16384).
+    """
+    client = _get_client()
+    client.send(
+        "/live/clip/remove/notes",
+        track_index, clip_slot,
+        int(start_pitch), int(pitch_span),
+        float(start_beat), float(beat_span),
+    )
+    time.sleep(LIVE_TICK_SEC)
+    return {"track_index": track_index, "clip_slot": clip_slot}
 
 
 def main() -> None:
