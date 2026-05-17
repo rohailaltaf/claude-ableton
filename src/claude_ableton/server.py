@@ -149,6 +149,31 @@ class SetSidechainResult(TypedDict):
     value: str
 
 
+class ReturnTrackInfo(TypedDict):
+    return_index: int
+    name: str
+
+
+class CreateReturnTrackResult(TypedDict):
+    return_index: int
+
+
+class LoadAudioEffectOnReturnResult(TypedDict):
+    return_index: int
+    effect_path: str
+
+
+class SendInfo(TypedDict):
+    send_index: int
+    value: float
+
+
+class SetSendResult(TypedDict):
+    track_index: int
+    send_index: int
+    value: float
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1194,6 +1219,112 @@ def set_sidechain_channel(
         "device_index": device_index,
         "value": channel,
     }
+
+
+#--------------------------------------------------------------------------------
+# Sends and return tracks — share reverb/delay buses across tracks.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_return_tracks() -> list[ReturnTrackInfo]:
+    """List every return track with its index and name.
+
+    Return tracks live separately from regular tracks (`song.return_tracks`).
+    Their indices are independent — return 0 is the first return track,
+    not the first regular track.
+    """
+    client = _get_client()
+    reply = client.query("/live/song/get/return_tracks/name")
+    # reply: (name1, name2, ...)
+    return [
+        {"return_index": i, "name": str(name)}
+        for i, name in enumerate(reply)
+    ]
+
+
+@mcp.tool()
+def create_return_track() -> CreateReturnTrackResult:
+    """Create a new (empty) return track at the end of the return-track list.
+
+    Returns the new return track's index. Use `load_audio_effect_on_return`
+    to put a reverb/delay/etc. on it, then `set_send` on regular tracks to
+    route audio in.
+    """
+    client = _get_client()
+    (before,) = client.query("/live/song/get/num_return_tracks")
+    client.send("/live/song/create_return_track")
+    time.sleep(LIVE_TICK_SEC)
+    return {"return_index": int(before)}
+
+
+@mcp.tool()
+def load_audio_effect_on_return(
+    return_index: int, effect_path: str
+) -> LoadAudioEffectOnReturnResult:
+    """Load an audio effect onto a return track by browser path.
+
+    Appended to the return track's device chain. Path is slash-separated
+    from `app.browser.audio_effects` — e.g. "Reverb" loads the default
+    Reverb device. Use `list_audio_effects` to discover paths.
+
+    Fire-and-forget (no device-count polling — return tracks aren't exposed
+    via `/live/track/get/num_devices`, so we'd be blind to confirmation).
+
+    Args:
+        return_index: zero-based return track index.
+        effect_path: slash-separated browser path to the effect.
+    """
+    client = _get_client()
+    client.send(
+        "/live/return_track/load_audio_effect", return_index, effect_path
+    )
+    time.sleep(LIVE_TICK_SEC * 2)  # browser load isn't instant
+    return {"return_index": return_index, "effect_path": effect_path}
+
+
+@mcp.tool()
+def set_send(
+    track_index: int, send_index: int, value: float
+) -> SetSendResult:
+    """Set a track's send level to a return track.
+
+    Each (regular) track has one send per return track, indexed in order.
+    `set_send(5, 0, 0.5)` sends track 5 to return 0 at ~half. Use
+    `list_return_tracks` to map names to indices.
+
+    Args:
+        track_index: zero-based (regular) track index sending audio.
+        send_index: zero-based send/return index.
+        value: send level in [0.0, 1.0]. 0 = no send, 1 = max.
+    """
+    if not (0.0 <= value <= 1.0):
+        raise ValueError(f"send value {value} out of range 0.0-1.0")
+    client = _get_client()
+    client.send("/live/track/set/send", track_index, send_index, float(value))
+    return {
+        "track_index": track_index,
+        "send_index": send_index,
+        "value": float(value),
+    }
+
+
+@mcp.tool()
+def get_sends(track_index: int) -> list[SendInfo]:
+    """List the send levels of a track to every return.
+
+    Args:
+        track_index: zero-based (regular) track index.
+    """
+    client = _get_client()
+    n_reply = client.query("/live/song/get/num_return_tracks")
+    n = int(n_reply[0])
+    sends: list[SendInfo] = []
+    for i in range(n):
+        reply = client.query("/live/track/get/send", track_index, i)
+        # reply: (track_index, send_index, value)
+        sends.append({"send_index": i, "value": float(reply[2])})
+    return sends
 
 
 def main() -> None:

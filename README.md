@@ -102,6 +102,11 @@ With Live open and Claude Desktop running, try:
 | `get_sidechain_channels(track_index, device_index)` | shipped | List sidechain channel tap points (Pre FX / Post FX / Post Mixer). |
 | `set_sidechain_source(track_index, device_index, source)` | shipped | Set sidechain source by name (e.g. wire bass's Compressor to "Drums"). |
 | `set_sidechain_channel(track_index, device_index, channel)` | shipped | Set sidechain channel tap point. |
+| `list_return_tracks()` | shipped | List return tracks with index and name. |
+| `create_return_track()` | shipped | Create a new return track; returns the new index. |
+| `load_audio_effect_on_return(return_index, effect_path)` | shipped | Load an audio effect onto a return track (e.g. a Reverb on a shared bus). |
+| `set_send(track_index, send_index, value)` | shipped | Set a track's send level (0.0–1.0) to a return track. |
+| `get_sends(track_index)` | shipped | List a track's send levels to every return. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
