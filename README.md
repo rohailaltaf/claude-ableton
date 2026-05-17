@@ -77,6 +77,8 @@ With Live open and Claude Desktop running, try:
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes (Session view). |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |
+| `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
+| `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
 
 See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrument allowlist).

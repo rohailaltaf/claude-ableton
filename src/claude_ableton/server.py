@@ -41,6 +41,17 @@ class ClipActionResult(TypedDict):
     action: str
 
 
+class DeleteTrackResult(TypedDict):
+    track_index: int
+    action: str
+
+
+class DeleteDeviceResult(TypedDict):
+    track_index: int
+    device_index: int
+    action: str
+
+
 class RhythmStep(TypedDict):
     start_beat: float
     duration_beat: float
@@ -392,6 +403,41 @@ def play_clip(track_index: int, clip_slot: int) -> ClipActionResult:
     client = _get_client()
     client.send("/live/clip_slot/fire", track_index, clip_slot)
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "fired"}
+
+
+@mcp.tool()
+def delete_track(track_index: int) -> DeleteTrackResult:
+    """Delete a track from the song.
+
+    Destructive: removes the track and everything on it (devices, clips).
+    Live's Undo (Cmd+Z) can recover.
+
+    Args:
+        track_index: zero-based track index.
+    """
+    client = _get_client()
+    client.send("/live/song/delete_track", track_index)
+    return {"track_index": track_index, "action": "deleted"}
+
+
+@mcp.tool()
+def delete_device(track_index: int, device_index: int) -> DeleteDeviceResult:
+    """Delete a device (instrument or effect) from a track.
+
+    Destructive but Undo-able. Useful for swapping instruments: delete the
+    current device, then call load_instrument for the new one.
+
+    Args:
+        track_index: zero-based track index.
+        device_index: zero-based device index on the track.
+    """
+    client = _get_client()
+    client.send("/live/track/delete_device", track_index, device_index)
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "action": "deleted",
+    }
 
 
 @mcp.tool()
