@@ -93,6 +93,11 @@ With Live open and Claude Desktop running, try:
 | `set_track_solo(track_index, solo)` | shipped | Solo/un-solo a track. |
 | `get_device_parameters(track_index, device_index)` | shipped | List a device's parameters with current value + range. |
 | `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Set one device parameter by index. |
+| `list_audio_effects(path?)` | shipped | List child names in Live's audio-effects browser at a slash-separated path. |
+| `load_audio_effect(track_index, effect_path)` | shipped | Append an audio effect (reverb, delay, EQ, compressor, etc.) to a track's device chain. |
+| `start_playing()` | shipped | Start global playback. |
+| `stop_playing()` | shipped | Stop global playback. |
+| `continue_playing()` | shipped | Resume playback from the current position. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
@@ -103,7 +108,7 @@ See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrum
 
 - **Session view only.** Created clips live in the Session view grid, not the Arrangement view. Switch Live to Session view (Tab key) to see and trigger them.
 - **4/4 time assumed.** `length_bars` is multiplied by 4 to get beats; we don't read or set the project time signature.
-- **Partial transport control.** We can fire clips and scenes, and set tempo. Can't yet start/stop the global transport from a tool, change time signature, or read playback position.
+- **No time signature, no playback position.** Can fire clips and scenes, start/stop/continue the global transport, and set tempo. Can't yet change the project time signature or read the current playback position.
 - **No audio tracks, no effects, no routing.** Only MIDI tracks with a single built-in instrument.
 - **Instrument allowlist** is limited to the 9 built-in Live 12 Suite instruments listed in [DESIGN.md](DESIGN.md). Intro/Standard editions are missing several.
 

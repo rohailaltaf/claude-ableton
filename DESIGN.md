@@ -46,6 +46,9 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `set_track_volume / set_track_pan / set_track_mute / set_track_solo` | shipped | Mixer wrappers around `/live/track/set/{volume,panning,mute,solo}`. Fire-and-forget. |
 | `get_device_parameters(track_index, device_index)` | shipped | Lists each parameter's name/value/min/max/is_quantized for sound design. |
 | `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Single-parameter setter; LLM should call `get_device_parameters` first to discover indices and ranges. |
+| `list_audio_effects(path?)` | shipped | Walks `app.browser.audio_effects` by path. Wraps `/live/browser/list_audio_effects`. |
+| `load_audio_effect(track_index, effect_path)` | shipped | Appends an audio effect to a track's device chain via `/live/track/load_audio_effect`. Polls `num_devices` to confirm. |
+| `start_playing / stop_playing / continue_playing` | shipped | Global transport via `/live/song/{start,stop,continue}_playing`. Fire-and-forget. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |

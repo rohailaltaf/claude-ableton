@@ -121,6 +121,16 @@ class SetDeviceParameterResult(TypedDict):
     value: float
 
 
+class LoadAudioEffectResult(TypedDict):
+    track_index: int
+    effect_path: str
+    device_index: int
+
+
+class TransportResult(TypedDict):
+    action: str
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -949,6 +959,106 @@ def set_device_parameter(
         "parameter_index": parameter_index,
         "value": float(value),
     }
+
+
+#--------------------------------------------------------------------------------
+# Audio effects — wraps our fork's app.browser.audio_effects endpoints.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_audio_effects(path: str = "") -> ListPresetsResult:
+    """List child names in Live's audio-effects browser at the given path.
+
+    Walks `app.browser.audio_effects`. Empty path returns top-level
+    categories (Reverb, Delay, EQ Eight, Compressor, etc.). With a path
+    like "Reverb" returns presets in that folder. Slash-separated.
+
+    Args:
+        path: slash-separated audio-effects browser path; "" for top-level.
+    """
+    client = _get_client()
+    reply = client.query("/live/browser/list_audio_effects", path)
+    children = [str(x) for x in reply[1:]]
+    return {"path": str(reply[0]), "children": children}
+
+
+@mcp.tool()
+def load_audio_effect(track_index: int, effect_path: str) -> LoadAudioEffectResult:
+    """Load an audio effect onto a track by browser path.
+
+    Appended to the track's device chain (after any existing devices).
+    Path is slash-separated from `app.browser.audio_effects` — e.g.
+    "Reverb" loads the default Reverb device, "Compressor/Mixing/Vocal"
+    loads a specific preset. Use `list_audio_effects` to discover paths.
+
+    Args:
+        track_index: zero-based track index.
+        effect_path: slash-separated browser path to the effect.
+
+    Returns:
+        Dict with track_index, effect_path, and the device_index of the
+        loaded effect.
+
+    Raises:
+        RuntimeError: if no new device appears on the track within 2s.
+    """
+    client = _get_client()
+    devices_before = _num_devices(client, track_index)
+    client.send("/live/track/load_audio_effect", track_index, effect_path)
+
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        if _num_devices(client, track_index) > devices_before:
+            return {
+                "track_index": track_index,
+                "effect_path": effect_path,
+                "device_index": devices_before,
+            }
+
+    raise RuntimeError(
+        f"Load timed out: audio effect {effect_path!r} did not appear on track "
+        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
+        "exist or may not be loadable; try list_audio_effects to verify."
+    )
+
+
+#--------------------------------------------------------------------------------
+# Transport — global play/stop/continue.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def start_playing() -> TransportResult:
+    """Start global playback from the beginning of the current arrangement
+    position, or fire whatever Session view clips are queued.
+
+    Use this when no Session clip has been launched but you want sound;
+    `fire_scene` / `play_clip` will also start the transport if it isn't
+    already running.
+    """
+    client = _get_client()
+    client.send("/live/song/start_playing")
+    return {"action": "started"}
+
+
+@mcp.tool()
+def stop_playing() -> TransportResult:
+    """Stop global playback. All playing clips are stopped."""
+    client = _get_client()
+    client.send("/live/song/stop_playing")
+    return {"action": "stopped"}
+
+
+@mcp.tool()
+def continue_playing() -> TransportResult:
+    """Resume playback from the current arrangement position without
+    restarting from the top.
+    """
+    client = _get_client()
+    client.send("/live/song/continue_playing")
+    return {"action": "continued"}
 
 
 def main() -> None:
