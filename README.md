@@ -79,6 +79,7 @@ With Live open and Claude Desktop running, try:
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes (Session view). |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |
+| `delete_clip(track_index, clip_slot)` | shipped | Delete a clip from a slot (destructive, Undo-able). |
 | `fire_scene(scene_index)` | shipped | Fire all clips in a scene (row), locking multiple tracks to the same downbeat. |
 | `set_tempo(bpm)` | shipped | Set the project tempo (20-999 BPM). |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |

@@ -571,6 +571,22 @@ def stop_clip(track_index: int, clip_slot: int) -> ClipActionResult:
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "stopped"}
 
 
+@mcp.tool()
+def delete_clip(track_index: int, clip_slot: int) -> ClipActionResult:
+    """Delete the clip in the given clip slot, emptying the slot.
+
+    Destructive but Undo-able in Live. Useful for replacing a clip with
+    a new one in the same slot (create_clip refuses to overwrite).
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot (scene) index.
+    """
+    client = _get_client()
+    client.send("/live/clip_slot/delete_clip", track_index, clip_slot)
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "deleted"}
+
+
 def main() -> None:
     mcp.run()
 
