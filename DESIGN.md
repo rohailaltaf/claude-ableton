@@ -29,7 +29,9 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | Tool | Status | Purpose |
 |---|---|---|
 | `create_midi_track(name?)` | shipped | Add a MIDI track. Returns track index. |
-| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument. `instrument` is one of the allowlist keys (see below); we resolve to the browser name and call our fork's `/live/track/load_instrument`. |
+| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument. `instrument` is one of the allowlist keys (see below); we resolve to the browser name and call our fork's `/live/track/load_instrument`. Loads the default init patch only. |
+| `list_presets(path?)` | shipped | List instrument-browser child names at a slash-separated path. Wraps `/live/browser/list_instrument_presets`. |
+| `load_preset(track_index, preset_path)` | shipped | Load any item under `app.browser.instruments` by path (e.g. `Wavetable/Synth Lead/Big Pluck`). Polls `num_devices` to confirm. Wraps `/live/track/load_instrument_preset`. |
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a Session-view MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision; assumes 4/4 time. |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip (`/live/clip_slot/fire`). Fire-and-forget. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip (`/live/clip/stop`). Fire-and-forget. |

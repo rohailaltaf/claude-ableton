@@ -73,7 +73,9 @@ With Live open and Claude Desktop running, try:
 | Tool | Status | Purpose |
 |---|---|---|
 | `create_midi_track(name?)` | shipped | Add a MIDI track. |
-| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument from the allowlist. |
+| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument from the allowlist (default init patch). |
+| `list_presets(path?)` | shipped | List child names in Live's instrument browser at a slash-separated path. |
+| `load_preset(track_index, preset_path)` | shipped | Load a specific preset by browser path (e.g. `Wavetable/Synth Lead/Big Pluck`). |
 | `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes (Session view). |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |

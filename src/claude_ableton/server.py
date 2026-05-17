@@ -52,6 +52,17 @@ class DeleteDeviceResult(TypedDict):
     action: str
 
 
+class ListPresetsResult(TypedDict):
+    path: str
+    children: list[str]
+
+
+class LoadPresetResult(TypedDict):
+    track_index: int
+    preset_path: str
+    device_index: int
+
+
 class RhythmStep(TypedDict):
     start_beat: float
     duration_beat: float
@@ -403,6 +414,69 @@ def play_clip(track_index: int, clip_slot: int) -> ClipActionResult:
     client = _get_client()
     client.send("/live/clip_slot/fire", track_index, clip_slot)
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "fired"}
+
+
+@mcp.tool()
+def list_presets(path: str = "") -> ListPresetsResult:
+    """List child names in Live's instrument browser at the given path.
+
+    Walks `app.browser.instruments`. With an empty path, returns the top-level
+    instrument names (Wavetable, Operator, etc.). With a path like "Wavetable"
+    returns its category folders; "Wavetable/Synth Lead" returns presets in
+    that folder. Slash-separated.
+
+    If the path doesn't exist, returns an empty children list (and Live logs
+    a warning).
+
+    Args:
+        path: slash-separated browser path; "" for top-level.
+    """
+    client = _get_client()
+    reply = client.query("/live/browser/list_instrument_presets", path)
+    # Reply shape: (path, name1, name2, ...). When path doesn't exist or has
+    # no children, reply is (path,) alone.
+    children = [str(x) for x in reply[1:]]
+    return {"path": str(reply[0]), "children": children}
+
+
+@mcp.tool()
+def load_preset(track_index: int, preset_path: str) -> LoadPresetResult:
+    """Load a specific instrument preset onto a track by browser path.
+
+    Path is slash-separated from `app.browser.instruments` — e.g.
+    "Wavetable/Synth Lead/Big Pluck". Use list_presets to discover paths.
+
+    Args:
+        track_index: zero-based track index.
+        preset_path: slash-separated browser path to the preset.
+
+    Returns:
+        Dict with track_index, preset_path, and the device_index of the
+        loaded device.
+
+    Raises:
+        RuntimeError: if no device appears on the track within 2s
+            (probably means the path doesn't exist or isn't loadable).
+    """
+    client = _get_client()
+    devices_before = _num_devices(client, track_index)
+    client.send("/live/track/load_instrument_preset", track_index, preset_path)
+
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        if _num_devices(client, track_index) > devices_before:
+            return {
+                "track_index": track_index,
+                "preset_path": preset_path,
+                "device_index": devices_before,
+            }
+
+    raise RuntimeError(
+        f"Load timed out: preset {preset_path!r} did not appear on track "
+        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
+        "exist or may not be loadable; try list_presets to verify."
+    )
 
 
 @mcp.tool()
