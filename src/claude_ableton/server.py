@@ -131,6 +131,24 @@ class TransportResult(TypedDict):
     action: str
 
 
+class SidechainSourceList(TypedDict):
+    track_index: int
+    device_index: int
+    sources: list[str]
+
+
+class SidechainChannelList(TypedDict):
+    track_index: int
+    device_index: int
+    channels: list[str]
+
+
+class SetSidechainResult(TypedDict):
+    track_index: int
+    device_index: int
+    value: str
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1059,6 +1077,123 @@ def continue_playing() -> TransportResult:
     client = _get_client()
     client.send("/live/song/continue_playing")
     return {"action": "continued"}
+
+
+#--------------------------------------------------------------------------------
+# Sidechain — wraps our fork's device input-routing endpoints. Use to wire
+# a Compressor / Gate / Vocoder's sidechain input to a kick (or any) track.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def get_sidechain_sources(
+    track_index: int, device_index: int
+) -> SidechainSourceList:
+    """List the available sidechain source names for a device.
+
+    Only devices with input routing (Compressor, Glue Compressor, Gate,
+    Vocoder, etc.) return a non-empty list. Source names are typically
+    track names plus "No Input" and any external inputs configured in
+    Live's preferences.
+
+    Args:
+        track_index: zero-based track index hosting the device.
+        device_index: zero-based device index on the track.
+    """
+    client = _get_client()
+    reply = client.query(
+        "/live/device/get/available_input_routing_types",
+        track_index, device_index,
+    )
+    # reply: (track_index, device_index, name1, name2, ...)
+    sources = [str(x) for x in reply[2:]]
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "sources": sources,
+    }
+
+
+@mcp.tool()
+def get_sidechain_channels(
+    track_index: int, device_index: int
+) -> SidechainChannelList:
+    """List the available sidechain channel tap points for a device.
+
+    Typical values: "Pre FX", "Post FX", "Post Mixer". Determines where
+    in the source track's signal chain the sidechain is tapped.
+
+    Args:
+        track_index: zero-based track index hosting the device.
+        device_index: zero-based device index on the track.
+    """
+    client = _get_client()
+    reply = client.query(
+        "/live/device/get/available_input_routing_channels",
+        track_index, device_index,
+    )
+    channels = [str(x) for x in reply[2:]]
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "channels": channels,
+    }
+
+
+@mcp.tool()
+def set_sidechain_source(
+    track_index: int, device_index: int, source: str
+) -> SetSidechainResult:
+    """Set the sidechain source for a Compressor / Gate / Vocoder etc.
+
+    Use `get_sidechain_sources` first to discover valid names. To
+    actually hear sidechain pumping, you also need to enable the
+    device's S/C On parameter (typically param index 20 on the stock
+    Compressor) via `set_device_parameter`.
+
+    Args:
+        track_index: zero-based track index hosting the device.
+        device_index: zero-based device index on the track.
+        source: display name of the source (e.g. "Drums", "Kick",
+            "No Input"). Must match exactly.
+    """
+    client = _get_client()
+    client.send(
+        "/live/device/set/input_routing_type",
+        track_index, device_index, source,
+    )
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "value": source,
+    }
+
+
+@mcp.tool()
+def set_sidechain_channel(
+    track_index: int, device_index: int, channel: str
+) -> SetSidechainResult:
+    """Set the sidechain channel tap point.
+
+    Use `get_sidechain_channels` first to discover valid names.
+    Typical: "Pre FX" (raw source), "Post FX" (after effects), or
+    "Post Mixer" (after fader/pan — what you hear).
+
+    Args:
+        track_index: zero-based track index hosting the device.
+        device_index: zero-based device index on the track.
+        channel: display name of the tap point. Must match exactly.
+    """
+    client = _get_client()
+    client.send(
+        "/live/device/set/input_routing_channel",
+        track_index, device_index, channel,
+    )
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "value": channel,
+    }
 
 
 def main() -> None:

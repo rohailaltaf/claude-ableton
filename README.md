@@ -98,6 +98,10 @@ With Live open and Claude Desktop running, try:
 | `start_playing()` | shipped | Start global playback. |
 | `stop_playing()` | shipped | Stop global playback. |
 | `continue_playing()` | shipped | Resume playback from the current position. |
+| `get_sidechain_sources(track_index, device_index)` | shipped | List sidechain source names available to a Compressor/Gate/Vocoder/etc. |
+| `get_sidechain_channels(track_index, device_index)` | shipped | List sidechain channel tap points (Pre FX / Post FX / Post Mixer). |
+| `set_sidechain_source(track_index, device_index, source)` | shipped | Set sidechain source by name (e.g. wire bass's Compressor to "Drums"). |
+| `set_sidechain_channel(track_index, device_index, channel)` | shipped | Set sidechain channel tap point. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |

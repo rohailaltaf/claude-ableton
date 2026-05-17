@@ -49,6 +49,8 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `list_audio_effects(path?)` | shipped | Walks `app.browser.audio_effects` by path. Wraps `/live/browser/list_audio_effects`. |
 | `load_audio_effect(track_index, effect_path)` | shipped | Appends an audio effect to a track's device chain via `/live/track/load_audio_effect`. Polls `num_devices` to confirm. |
 | `start_playing / stop_playing / continue_playing` | shipped | Global transport via `/live/song/{start,stop,continue}_playing`. Fire-and-forget. |
+| `get_sidechain_sources / get_sidechain_channels` | shipped | Wraps `/live/device/get/available_input_routing_{types,channels}` from our fork. Returns lists of display names available on a Compressor/Gate/Vocoder/etc. |
+| `set_sidechain_source / set_sidechain_channel` | shipped | Wraps `/live/device/set/input_routing_{type,channel}`. Looks up the source by display name and binds it. To actually hear pumping, also set the device's `S/C On` parameter via `set_device_parameter`. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |
