@@ -185,6 +185,11 @@ class RemoveNotesResult(TypedDict):
     clip_slot: int
 
 
+class LoadSampleResult(TypedDict):
+    track_index: int
+    sample_path: str
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1473,6 +1478,55 @@ def remove_notes(
     )
     time.sleep(LIVE_TICK_SEC)
     return {"track_index": track_index, "clip_slot": clip_slot}
+
+
+#--------------------------------------------------------------------------------
+# Samples — load actual audio (vocal chops, drum hits, percussion loops)
+# instead of synthesizing everything from MIDI.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_samples(path: str = "") -> ListPresetsResult:
+    """List child names in Live's sample browser at the given path.
+
+    Walks `app.browser.samples`. Empty path returns top-level categories
+    (typically named after installed Packs). Drill in with slash-separated
+    paths to find individual .wav / .aif files.
+
+    Args:
+        path: slash-separated sample-browser path; "" for top-level.
+    """
+    client = _get_client()
+    reply = client.query("/live/browser/list_samples", path)
+    children = [str(x) for x in reply[1:]]
+    return {"path": str(reply[0]), "children": children}
+
+
+@mcp.tool()
+def load_sample(track_index: int, sample_path: str) -> LoadSampleResult:
+    """Load a sample onto a MIDI track. Live wraps it in a Simpler.
+
+    The sample becomes playable via MIDI — triggering any pitch plays
+    the sample transposed from its root note. Useful for vocal chops
+    (write a melodic MIDI clip that "plays" the vocal), drum one-shots
+    (one note per hit), or texture/atmosphere samples.
+
+    Loaded as the track's instrument, so it replaces any existing
+    instrument on the track. For drum-rack-style multi-sample mapping,
+    load onto a Drum Rack pad instead (TODO: not yet exposed).
+
+    Args:
+        track_index: zero-based MIDI track index.
+        sample_path: slash-separated browser path under `app.browser.samples`.
+
+    Fire-and-forget (sample loads can be slow on first call — Live indexes
+    the file).
+    """
+    client = _get_client()
+    client.send("/live/track/load_sample", track_index, sample_path)
+    time.sleep(LIVE_TICK_SEC * 3)  # samples take longer than presets
+    return {"track_index": track_index, "sample_path": sample_path}
 
 
 def main() -> None:

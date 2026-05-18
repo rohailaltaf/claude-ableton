@@ -110,6 +110,8 @@ With Live open and Claude Desktop running, try:
 | `get_notes(track_index, clip_slot, ...range)` | shipped | Read notes from an existing clip, optionally filtered by pitch/time range. |
 | `add_notes_to_clip(track_index, clip_slot, notes)` | shipped | Add notes to an existing clip without removing what's there. |
 | `remove_notes(track_index, clip_slot, ...range)` | shipped | Remove notes from a clip in a pitch/time range (default = all). |
+| `list_samples(path?)` | shipped | List child names in Live's sample browser at a slash-separated path. |
+| `load_sample(track_index, sample_path)` | shipped | Load a sample onto a MIDI track (auto-wrapped in Simpler so it's playable via MIDI). |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
