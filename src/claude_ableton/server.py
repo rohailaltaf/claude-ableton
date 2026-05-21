@@ -190,6 +190,20 @@ class LoadSampleResult(TypedDict):
     sample_path: str
 
 
+class PaginatedSampleList(TypedDict):
+    path: str
+    offset: int
+    total_count: int
+    children: list[str]
+
+
+class LoadSampleToDrumPadResult(TypedDict):
+    track_index: int
+    device_index: int
+    pad_pitch: int
+    sample_path: str
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1487,20 +1501,35 @@ def remove_notes(
 
 
 @mcp.tool()
-def list_samples(path: str = "") -> ListPresetsResult:
-    """List child names in Live's sample browser at the given path.
+def list_samples(path: str = "", offset: int = 0) -> PaginatedSampleList:
+    """List child names in Live's sample browser, with pagination.
 
-    Walks `app.browser.samples`. Empty path returns top-level categories
-    (typically named after installed Packs). Drill in with slash-separated
-    paths to find individual .wav / .aif files.
+    Walks `app.browser.samples`. Empty path returns top-level entries
+    (typically file names in the flat root of the samples library, or
+    pack-named folders depending on Live install). Drill in with
+    slash-separated paths.
+
+    The samples library can be huge (hundreds of files per folder).
+    Reply is byte-capped to fit one OSC packet (~7.5 KB); when
+    truncated, use `offset = previous offset + len(children)` to fetch
+    the next page. `total_count` tells you when you're done
+    (`offset + len(children) >= total_count`).
 
     Args:
         path: slash-separated sample-browser path; "" for top-level.
+        offset: zero-based index to start listing from (default 0).
     """
     client = _get_client()
-    reply = client.query("/live/browser/list_samples", path)
-    children = [str(x) for x in reply[1:]]
-    return {"path": str(reply[0]), "children": children}
+    reply = client.query(
+        "/live/browser/list_samples", path, int(offset), timeout=3.0
+    )
+    # reply: (path, offset, total_count, name1, name2, ...)
+    return {
+        "path": str(reply[0]),
+        "offset": int(reply[1]),
+        "total_count": int(reply[2]),
+        "children": [str(x) for x in reply[3:]],
+    }
 
 
 @mcp.tool()
@@ -1527,6 +1556,46 @@ def load_sample(track_index: int, sample_path: str) -> LoadSampleResult:
     client.send("/live/track/load_sample", track_index, sample_path)
     time.sleep(LIVE_TICK_SEC * 3)  # samples take longer than presets
     return {"track_index": track_index, "sample_path": sample_path}
+
+
+@mcp.tool()
+def load_sample_to_drum_pad(
+    track_index: int,
+    device_index: int,
+    pad_pitch: int,
+    sample_path: str,
+) -> LoadSampleToDrumPadResult:
+    """Load a sample onto a specific pad of a Drum Rack.
+
+    Lets you swap a single drum (e.g. replace the kick) for a real
+    sample without touching the rest of the kit. The Drum Rack must
+    already exist on the track — typically loaded via `load_drum_kit`
+    or as part of a Live default project.
+
+    `pad_pitch` is the MIDI note that triggers the pad. By standard
+    convention: 36 = kick, 38 = snare, 39 = clap, 42 = closed hat,
+    46 = open hat, 49 = crash, 51 = ride. Drum Racks normally start
+    at C1 (36) and Live's GM-style Drum Rack presets match this.
+
+    Args:
+        track_index: zero-based track index containing the Drum Rack.
+        device_index: zero-based device index of the Drum Rack on
+            the track.
+        pad_pitch: MIDI note (0-127) of the target pad.
+        sample_path: slash-separated path under `app.browser.samples`.
+    """
+    client = _get_client()
+    client.send(
+        "/live/track/load_sample_to_drum_pad",
+        track_index, device_index, pad_pitch, sample_path,
+    )
+    time.sleep(LIVE_TICK_SEC * 3)
+    return {
+        "track_index": track_index,
+        "device_index": device_index,
+        "pad_pitch": pad_pitch,
+        "sample_path": sample_path,
+    }
 
 
 def main() -> None:
