@@ -113,6 +113,9 @@ With Live open and Claude Desktop running, try:
 | `list_samples(path?, offset?)` | shipped | Paginated list of child names in Live's sample browser. Reply includes `offset` and `total_count` for paging. |
 | `load_sample(track_index, sample_path)` | shipped | Load a sample onto a MIDI track (auto-wrapped in Simpler so it's playable via MIDI). |
 | `load_sample_to_drum_pad(track_index, device_index, pad_pitch, sample_path)` | shipped | Load a sample onto a specific Drum Rack pad — build custom kits sample-by-sample. |
+| `automate_device_parameter(track_index, clip_slot, device_index, parameter_index, steps)` | shipped | Write step automation on a device parameter into a clip's envelope. |
+| `automate_mixer_parameter(track_index, clip_slot, parameter, steps)` | shipped | Automate volume / panning / send_N on a clip's track. |
+| `clear_clip_envelopes(track_index, clip_slot)` | shipped | Remove all automation envelopes from a clip. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |

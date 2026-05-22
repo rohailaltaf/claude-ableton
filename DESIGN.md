@@ -56,6 +56,7 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `get_notes / add_notes_to_clip / remove_notes` | shipped | Clip note read / append / range-delete. Wraps stock `/live/clip/{get,add,remove}/notes`. Default ranges in get/remove mean "all notes". Enables iterative pattern editing without delete+recreate. |
 | `list_samples / load_sample` | shipped | Walks `app.browser.samples` via our fork's `/live/browser/list_samples` and `/live/track/load_sample`. Live wraps loaded samples in Simpler automatically so MIDI plays them transposed. `list_samples` is paginated (reply byte-capped to UDP MTU; `total_count` returned so callers can scroll). |
 | `load_sample_to_drum_pad` | shipped | Loads a sample onto a specific Drum Rack pad via `/live/track/load_sample_to_drum_pad`. Sets `device.view.selected_drum_pad` before `app.browser.load_item` so Live drops the sample on the chosen pad. Lets the LLM swap or build kits one pad at a time on top of any existing Drum Rack. |
+| `automate_device_parameter / automate_mixer_parameter / clear_clip_envelopes` | shipped | Step-style clip automation via our fork's `/live/clip/automate_{device,mixer}_parameter` and `/live/clip/clear_envelopes`. Live's `AutomationEnvelope.insert_step` is the only public knob for writing envelopes (no native breakpoint-with-curve), so smooth ramps are approximated with many small adjacent steps. Envelopes loop with the clip. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |
@@ -82,11 +83,11 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 
 ### Out of scope for MVP
 
-- Audio tracks, audio clips, audio routing
-- Effects, device chains beyond the instrument slot
-- Time signature, full transport control (play/stop/position) — though `set_tempo` and `fire_scene` shipped post-MVP
+- Audio tracks, audio clips, audio routing (samples shipped via Simpler-wrapped MIDI; raw audio clip drops still TBD)
+- Time signature, playback position — `set_tempo`, `fire_scene`, and global transport (start/stop/continue) all shipped post-MVP
 - Saving, loading, or exporting project files
 - User instrument libraries, third-party packs, M4L devices
+- Smooth-curve automation breakpoints (step automation shipped; Live's API only exposes steps natively)
 
 ## Constraints worth knowing
 

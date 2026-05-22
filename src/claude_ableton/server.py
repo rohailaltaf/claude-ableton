@@ -204,6 +204,23 @@ class LoadSampleToDrumPadResult(TypedDict):
     sample_path: str
 
 
+class AutomationStep(TypedDict):
+    start_beat: float    # beats from clip start
+    length_beats: float  # length of the constant-value segment
+    value: float         # parameter value during this segment
+
+
+class AutomationResult(TypedDict):
+    track_index: int
+    clip_slot: int
+    step_count: int
+
+
+class ClearEnvelopesResult(TypedDict):
+    track_index: int
+    clip_slot: int
+
+
 # Pitch-class lookup for chord component note names (sharps & flats).
 _PITCH_CLASS: dict[str, int] = {
     "C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3,
@@ -1596,6 +1613,134 @@ def load_sample_to_drum_pad(
         "pad_pitch": pad_pitch,
         "sample_path": sample_path,
     }
+
+
+#--------------------------------------------------------------------------------
+# Clip automation — write step-style envelopes on a clip's device or mixer
+# parameters. Each step is a constant-value segment; for smooth ramps,
+# pass many small adjacent steps. The envelopes loop with the clip.
+#--------------------------------------------------------------------------------
+
+
+def _flatten_steps(steps: list[AutomationStep]) -> list[float]:
+    """Validate steps and flatten to (time, length, value)*N for OSC."""
+    if not steps:
+        raise ValueError("steps list is empty")
+    flat: list[float] = []
+    for i, step in enumerate(steps):
+        start = float(step["start_beat"])
+        length = float(step["length_beats"])
+        value = float(step["value"])
+        if start < 0:
+            raise ValueError(f"step[{i}]: start_beat {start} must be >= 0")
+        if length <= 0:
+            raise ValueError(f"step[{i}]: length_beats {length} must be > 0")
+        flat.extend([start, length, value])
+    return flat
+
+
+@mcp.tool()
+def automate_device_parameter(
+    track_index: int,
+    clip_slot: int,
+    device_index: int,
+    parameter_index: int,
+    steps: list[AutomationStep],
+) -> AutomationResult:
+    """Write step automation for a device parameter into a clip's envelope.
+
+    Each step is a constant-value segment `[start_beat, start_beat+length_beats)`.
+    For a smooth ramp (filter sweep, crescendo), pass many small adjacent
+    steps — e.g. 64 steps of 0.25 beats each across 16 beats, with values
+    interpolated linearly from start to end.
+
+    The envelope loops with the clip, so a 16-beat sweep on a 4-bar clip
+    re-runs each loop.
+
+    Use `get_device_parameters` first to discover (device_index, parameter_index,
+    min, max). Step values must be inside [min, max] or Live silently clamps.
+
+    Args:
+        track_index: track holding the device.
+        clip_slot: clip slot index (must already contain a clip).
+        device_index: device index on the track.
+        parameter_index: parameter index within the device.
+        steps: list of step segments to write.
+    """
+    flat = _flatten_steps(steps)
+    client = _get_client()
+    client.send(
+        "/live/clip/automate_device_parameter",
+        track_index, clip_slot, device_index, parameter_index,
+        *flat,
+    )
+    time.sleep(LIVE_TICK_SEC)
+    return {
+        "track_index": track_index,
+        "clip_slot": clip_slot,
+        "step_count": len(steps),
+    }
+
+
+@mcp.tool()
+def automate_mixer_parameter(
+    track_index: int,
+    clip_slot: int,
+    parameter: str,
+    steps: list[AutomationStep],
+) -> AutomationResult:
+    """Write step automation for a mixer parameter (volume / pan / send).
+
+    `parameter` is one of:
+        "volume"  — normalized 0.0-1.0 (0.85 ≈ 0 dB unity)
+        "panning" — -1.0 (full left) to 1.0 (full right)
+        "send_N"  — N is the zero-based return index; value 0.0-1.0
+
+    Common use cases:
+    - "Sidechain duck" via automation: write a quick volume drop on the bass
+      clip at each kick position, recovering between hits — tighter than
+      a real sidechain compressor for some genres.
+    - Reverb send swell: gradually raise `send_N` value over the clip
+      length for a building wash.
+
+    Args:
+        track_index: track whose clip and mixer to automate.
+        clip_slot: clip slot index (must already contain a clip).
+        parameter: "volume" | "panning" | "send_N".
+        steps: list of step segments to write.
+    """
+    flat = _flatten_steps(steps)
+    client = _get_client()
+    client.send(
+        "/live/clip/automate_mixer_parameter",
+        track_index, clip_slot, parameter,
+        *flat,
+    )
+    time.sleep(LIVE_TICK_SEC)
+    return {
+        "track_index": track_index,
+        "clip_slot": clip_slot,
+        "step_count": len(steps),
+    }
+
+
+@mcp.tool()
+def clear_clip_envelopes(
+    track_index: int, clip_slot: int
+) -> ClearEnvelopesResult:
+    """Remove all automation envelopes from a clip.
+
+    Resets every automated parameter to its static value. Doesn't touch
+    notes or other clip properties.
+
+    Args:
+        track_index: track holding the clip.
+        clip_slot: clip slot index.
+    """
+    client = _get_client()
+    client.send("/live/clip/clear_envelopes", track_index, clip_slot)
+    time.sleep(LIVE_TICK_SEC)
+    return {"track_index": track_index, "clip_slot": clip_slot}
 
 
 def main() -> None:
