@@ -88,11 +88,18 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 
 ### Out of scope for MVP
 
-- Audio tracks, audio clips, audio routing (samples shipped via Simpler-wrapped MIDI; raw audio clip drops still TBD)
 - Time signature, playback position — `set_tempo`, `fire_scene`, and global transport (start/stop/continue) all shipped post-MVP
-- Saving, loading, or exporting project files
 - User instrument libraries, third-party packs, M4L devices
-- Smooth-curve automation breakpoints (step automation shipped; Live's API only exposes steps natively)
+
+### Live API ceilings (investigated — not buildable via the LOM)
+
+These were scoped as candidate capabilities and ruled out after confirming the Live Object Model doesn't expose them (verified against AbletonOSC's comprehensive handler coverage, which mirrors the LOM):
+
+- **Track grouping.** `Track.group_track` / `Track.is_grouped` / `ClipSlot.is_group_slot` are read-only — they tell you *which* group a track is in, but there is no method to *create* or dissolve a group. Grouping is a UI-only operation (Cmd+G).
+- **Saving / loading / exporting Live Sets.** No `save` method exists on `Song` or `Application`. The LOM cannot save the set or open a different one.
+- **Audio clips from a file.** `Song.create_audio_track` can make an empty audio track, but there is no API to drop an audio file into a Session slot as an audio clip — audio clips only come from recording. This is exactly why samples are shipped Simpler-wrapped on MIDI tracks.
+- **Freeze / flatten tracks.** No LOM support of any kind.
+- **Smooth-curve automation breakpoints.** Live's API only exposes step envelopes natively; smooth ramps are approximated with many small adjacent steps (shipped).
 
 ## Constraints worth knowing
 
