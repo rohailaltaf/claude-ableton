@@ -95,6 +95,8 @@ With Live open and Claude Desktop running, try:
 | `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Set one device parameter by index. |
 | `list_audio_effects(path?)` | shipped | List child names in Live's audio-effects browser at a slash-separated path. |
 | `load_audio_effect(track_index, effect_path)` | shipped | Append an audio effect (reverb, delay, EQ, compressor, etc.) to a track's device chain. |
+| `list_midi_effects(path?)` | shipped | List child names in Live's MIDI-effects browser at a slash-separated path. |
+| `load_midi_effect(track_index, effect_path)` | shipped | Load a MIDI effect (Arpeggiator, Scale, Chord, Note Length, etc.) onto a MIDI track, ahead of the instrument. |
 | `start_playing()` | shipped | Start global playback. |
 | `stop_playing()` | shipped | Stop global playback. |
 | `continue_playing()` | shipped | Resume playback from the current position. |

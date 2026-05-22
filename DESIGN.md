@@ -48,6 +48,8 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Single-parameter setter; LLM should call `get_device_parameters` first to discover indices and ranges. |
 | `list_audio_effects(path?)` | shipped | Walks `app.browser.audio_effects` by path. Wraps `/live/browser/list_audio_effects`. |
 | `load_audio_effect(track_index, effect_path)` | shipped | Appends an audio effect to a track's device chain via `/live/track/load_audio_effect`. Polls `num_devices` to confirm. |
+| `list_midi_effects(path?)` | shipped | Walks `app.browser.midi_effects` by path. Wraps our fork's `/live/browser/list_midi_effects`. |
+| `load_midi_effect(track_index, effect_path)` | shipped | Loads a MIDI effect onto a MIDI track via `/live/track/load_midi_effect` (Live inserts ahead of the instrument). Polls `num_devices` to confirm. |
 | `start_playing / stop_playing / continue_playing` | shipped | Global transport via `/live/song/{start,stop,continue}_playing`. Fire-and-forget. |
 | `get_sidechain_sources / get_sidechain_channels` | shipped | Wraps `/live/device/get/available_input_routing_{types,channels}` from our fork. Returns lists of display names available on a Compressor/Gate/Vocoder/etc. |
 | `set_sidechain_source / set_sidechain_channel` | shipped | Wraps `/live/device/set/input_routing_{type,channel}`. Looks up the source by display name and binds it. To actually hear pumping, also set the device's `S/C On` parameter via `set_device_parameter`. |

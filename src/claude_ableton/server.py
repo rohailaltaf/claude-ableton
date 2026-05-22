@@ -127,6 +127,12 @@ class LoadAudioEffectResult(TypedDict):
     device_index: int
 
 
+class LoadMidiEffectResult(TypedDict):
+    track_index: int
+    effect_path: str
+    device_count: int
+
+
 class TransportResult(TypedDict):
     action: str
 
@@ -1148,6 +1154,72 @@ def load_audio_effect(track_index: int, effect_path: str) -> LoadAudioEffectResu
         f"Load timed out: audio effect {effect_path!r} did not appear on track "
         f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
         "exist or may not be loadable; try list_audio_effects to verify."
+    )
+
+
+#--------------------------------------------------------------------------------
+# MIDI effects — wraps our fork's app.browser.midi_effects endpoints.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_midi_effects(path: str = "") -> ListPresetsResult:
+    """List child names in Live's MIDI-effects browser at the given path.
+
+    Walks `app.browser.midi_effects`. Empty path returns top-level MIDI
+    effects (Arpeggiator, Chord, Scale, Note Length, Random, Velocity,
+    Note Echo, Pitch, etc.). A path like "Arpeggiator" returns its presets.
+    Slash-separated.
+
+    Args:
+        path: slash-separated MIDI-effects browser path; "" for top-level.
+    """
+    client = _get_client()
+    reply = client.query("/live/browser/list_midi_effects", path)
+    children = [str(x) for x in reply[1:]]
+    return {"path": str(reply[0]), "children": children}
+
+
+@mcp.tool()
+def load_midi_effect(track_index: int, effect_path: str) -> LoadMidiEffectResult:
+    """Load a MIDI effect onto a MIDI track by browser path.
+
+    MIDI effects process notes *before* the instrument, so Live inserts them
+    ahead of the instrument in the device chain (existing device indices may
+    shift). Path is slash-separated from `app.browser.midi_effects` — e.g.
+    "Arpeggiator" loads the default Arpeggiator, "Scale" constrains notes to a
+    scale, "Chord" stacks intervals. Use `list_midi_effects` to discover paths.
+
+    Args:
+        track_index: zero-based MIDI track index.
+        effect_path: slash-separated browser path to the MIDI effect.
+
+    Returns:
+        Dict with track_index, effect_path, and device_count (the track's new
+        total device count after loading).
+
+    Raises:
+        RuntimeError: if no new device appears on the track within 2s.
+    """
+    client = _get_client()
+    devices_before = _num_devices(client, track_index)
+    client.send("/live/track/load_midi_effect", track_index, effect_path)
+
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        count = _num_devices(client, track_index)
+        if count > devices_before:
+            return {
+                "track_index": track_index,
+                "effect_path": effect_path,
+                "device_count": count,
+            }
+
+    raise RuntimeError(
+        f"Load timed out: MIDI effect {effect_path!r} did not appear on track "
+        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
+        "exist or may not be loadable; try list_midi_effects to verify."
     )
 
 
