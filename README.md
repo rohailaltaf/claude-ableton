@@ -137,7 +137,7 @@ See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrum
 - **4/4 time assumed.** `length_bars` is multiplied by 4 to get beats; we don't read or set the project time signature.
 - **No time signature, no playback position.** Can fire clips and scenes, start/stop/continue the global transport, and set tempo. Can't yet change the project time signature or read the current playback position.
 - **MIDI tracks only.** Instruments, drum kits, samples (Simpler-wrapped), audio effects, MIDI effects, return tracks, sends, and sidechain routing are all supported on/around MIDI tracks. Empty audio tracks can be created, but see the API ceilings below.
-- **Instrument allowlist** is limited to the 9 built-in Live 12 Suite instruments listed in [DESIGN.md](DESIGN.md). Intro/Standard editions are missing several.
+- **Instrument allowlist** covers the full top-level instrument set of Live 12 Suite (synths, samplers, racks, Drum Synths) — see [DESIGN.md](DESIGN.md). For named presets, use `load_preset` with a browser path. Intro/Standard editions ship fewer instruments.
 - **Live API ceilings.** Some things Live's scripting API simply doesn't expose, so they can't be built: grouping tracks, saving/loading/exporting the Set, dropping an audio file in as a clip (audio clips only come from recording — hence the Simpler workaround), and freezing/flattening tracks. Automation is step-only (smooth ramps are approximated with many small steps). See [DESIGN.md](DESIGN.md) for details.
 
 ## Security

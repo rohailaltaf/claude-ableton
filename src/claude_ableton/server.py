@@ -263,6 +263,7 @@ LOAD_POLL_SEC = 0.1
 # names of items under app.browser.instruments in Live (as the AbletonOSC
 # /live/track/load_instrument handler matches by name).
 INSTRUMENT_MAP: dict[str, str] = {
+    # Synths & physical-modeling instruments
     "operator": "Operator",
     "wavetable": "Wavetable",
     "drift": "Drift",
@@ -270,8 +271,25 @@ INSTRUMENT_MAP: dict[str, str] = {
     "analog": "Analog",
     "electric": "Electric",
     "tension": "Tension",
-    "simpler": "Simpler",
     "collision": "Collision",
+    # Samplers
+    "simpler": "Simpler",
+    "sampler": "Sampler",
+    "impulse": "Impulse",
+    "drum_sampler": "Drum Sampler",
+    # Racks & routing (empty containers)
+    "drum_rack": "Drum Rack",            # empty rack; use load_drum_kit for a kit
+    "instrument_rack": "Instrument Rack",
+    "external_instrument": "External Instrument",
+    # Drum Synths (individual percussion synths)
+    "ds_kick": "DS Kick",
+    "ds_snare": "DS Snare",
+    "ds_hh": "DS HH",
+    "ds_clap": "DS Clap",
+    "ds_tom": "DS Tom",
+    "ds_cymbal": "DS Cymbal",
+    "ds_fm": "DS FM",
+    "ds_clang": "DS Clang",
 }
 
 mcp = FastMCP("ableton")
@@ -321,9 +339,16 @@ def load_instrument(track_index: int, instrument: str) -> LoadInstrumentResult:
 
     Args:
         track_index: zero-based index of the target track.
-        instrument: instrument identifier from the allowlist. One of:
-            operator, wavetable, drift, meld, analog, electric, tension,
-            simpler, collision. Case-insensitive.
+        instrument: instrument identifier from the allowlist (case-insensitive):
+            - Synths / modeling: operator, wavetable, drift, meld, analog,
+              electric, tension, collision
+            - Samplers: simpler, sampler, impulse, drum_sampler
+            - Racks / routing: drum_rack (empty — use load_drum_kit for a kit),
+              instrument_rack, external_instrument
+            - Drum Synths: ds_kick, ds_snare, ds_hh, ds_clap, ds_tom,
+              ds_cymbal, ds_fm, ds_clang
+            For named factory/user presets of any of these, use load_preset
+            with a browser path instead.
 
     Returns:
         Dict with `instrument` (the loaded identifier) and `device_index`
@@ -332,7 +357,9 @@ def load_instrument(track_index: int, instrument: str) -> LoadInstrumentResult:
     Raises:
         ValueError: if `instrument` is not in the allowlist.
         RuntimeError: if the device does not appear on the track within
-            the load timeout (2s).
+            the load timeout (2s). Some identifiers map to instruments that
+            only ship with certain Live editions; on a missing instrument the
+            load simply won't appear and this error is raised.
     """
     client = _get_client()
     key = instrument.lower()

@@ -74,13 +74,16 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 - **Note shape**: `{pitch: int, start_beat: float, duration_beat: float, velocity: int}`.
 - **`clip_slot` collision**: if the slot already contains a clip, the tool returns an error. No overwrite, no auto-pick.
 
-### Instrument allowlist (v0.1)
+### Instrument allowlist
 
-Live's LOM loads devices by browser URI, not by name. Hand-maintained map of Live 12 Suite built-ins:
+`load_instrument` resolves a short identifier to the exact top-level item name under `app.browser.instruments`, then the fork's `/live/track/load_instrument` handler matches that name and calls `app.browser.load_item`. The map now covers the full top-level instrument set of a Live 12 Suite install:
 
-`operator`, `wavetable`, `drift`, `meld`, `analog`, `electric`, `tension`, `simpler`, `collision`
+- **Synths / modeling**: `operator`, `wavetable`, `drift`, `meld`, `analog`, `electric`, `tension`, `collision`
+- **Samplers**: `simpler`, `sampler`, `impulse`, `drum_sampler`
+- **Racks / routing**: `drum_rack` (empty — use `load_drum_kit` for a kit), `instrument_rack`, `external_instrument`
+- **Drum Synths**: `ds_kick`, `ds_snare`, `ds_hh`, `ds_clap`, `ds_tom`, `ds_cymbal`, `ds_fm`, `ds_clang`
 
-Each maps to a verified browser path. Adding instruments = extending this map after testing the URI.
+Each loads the default init patch. For named factory/user presets, use `load_preset` with a browser path (e.g. `Wavetable/Synth Lead/Big Pluck`). Adding more = extend `INSTRUMENT_MAP` with the exact browser name (verify via `list_presets("")`). Intro/Standard editions ship fewer instruments; a missing one just fails to load (the tool then times out with a clear error).
 
 ### Chord parsing
 
