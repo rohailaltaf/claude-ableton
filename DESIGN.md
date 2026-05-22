@@ -60,7 +60,7 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `re_enable_automation()` | shipped | Song-wide wrapper for `/live/song/re_enable_automation`. Rarely needed since the automate_* tools re-enable per-parameter, but useful as a "fix it" button after manual UI tweaks. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
-| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Higher-level helper. Parses chord symbols via pychord, voices each in naïve root position from the given octave, and delegates to `create_clip`. Rhythm defaults to one-chord-per-bar if omitted. |
+| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?, voicing?)` | shipped | Higher-level helper. Parses chord symbols via pychord and delegates to `create_clip`. `voicing="smooth"` (default) applies voice-leading; `voicing="root"` keeps root position. Rhythm defaults to one-chord-per-bar if omitted. |
 
 ### Conventions
 
@@ -80,7 +80,7 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 
 ### Chord parsing
 
-`chord_progression` uses [`pychord`](https://github.com/yuma-m/pychord) for symbol parsing. Lighter than music21, covers the common cases (maj/min/7/maj7/m7/dim/aug, slash chords, extensions). Voicing is naïve root-position for v0.1.
+`chord_progression` uses [`pychord`](https://github.com/yuma-m/pychord) for symbol parsing. Lighter than music21, covers the common cases (maj/min/7/maj7/m7/dim/aug, slash chords, extensions). Voicing defaults to `"smooth"`: the first chord is voiced close from the given octave, then each subsequent chord places every pitch class in the octave nearest the previous chord's centroid — common tones barely move and the progression stays in register. `"root"` preserves the original literal root-position behavior.
 
 ### Out of scope for MVP
 
@@ -101,7 +101,7 @@ Each maps to a verified browser path. Adding instruments = extending this map af
 ## Open decisions
 
 - **Rhythm pattern shape for `chord_progression`**: explicit `(start_beat, duration_beat)` tuples vs named patterns (`"whole"`, `"quarter"`, `"comping"`). Lean explicit tuples for v0.1, named patterns later.
-- **Voicing**: root position only for v0.1. Voice-leading is a v0.2 question.
+- **Voicing**: ~~root position only for v0.1. Voice-leading is a v0.2 question.~~ Resolved — `voicing="smooth"` (centroid-anchored voice-leading) is now the default; `voicing="root"` retained for the original behavior.
 
 ## Related work
 

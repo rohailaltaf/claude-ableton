@@ -119,7 +119,7 @@ With Live open and Claude Desktop running, try:
 | `re_enable_automation()` | shipped | Equivalent to Live's "Re-Enable Automation" button — un-disables any parameters whose envelopes Live has currently bypassed. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
-| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
+| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?, voicing?)` | shipped | Write a chord progression as block chords. `voicing="smooth"` (default) applies voice-leading so chords stay in register and common tones hold; `voicing="root"` keeps literal root position. |
 
 See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrument allowlist).
 

@@ -470,6 +470,30 @@ def _chord_to_midi(components: list[str], octave: int) -> list[int]:
     return midi_notes
 
 
+def _voice_chord_smooth(
+    components: list[str], octave: int, prev_notes: list[int] | None
+) -> list[int]:
+    """Voice a chord's pitch classes with smooth voice-leading.
+
+    With no previous chord, falls back to close root-position voicing from
+    `octave` (same as `_chord_to_midi`). Otherwise each pitch class is placed
+    in the octave nearest the previous chord's centroid, so the progression
+    stays in a stable register and common tones barely move — what a keyboard
+    player does, instead of root-position chords leaping by large intervals.
+    """
+    try:
+        pcs = [_PITCH_CLASS[c] for c in components]
+    except KeyError as e:
+        raise ValueError(f"Unknown note name in chord components: {e}") from e
+
+    if not prev_notes:
+        return _chord_to_midi(components, octave)
+
+    anchor = sum(prev_notes) / len(prev_notes)
+    notes = [pc + 12 * round((anchor - pc) / 12) for pc in pcs]
+    return sorted(int(n) for n in notes)
+
+
 @mcp.tool()
 def chord_progression(
     track_index: int,
@@ -479,12 +503,12 @@ def chord_progression(
     name: str | None = None,
     velocity: int = 90,
     octave: int = 4,
+    voicing: str = "smooth",
 ) -> CreateClipResult:
     """Write a chord progression into a clip as block chords.
 
-    Each chord symbol is parsed (via pychord) and voiced in naïve root
-    position from the given octave. By default each chord occupies one bar;
-    pass `rhythm` to control timing explicitly.
+    Each chord symbol is parsed (via pychord) and voiced into MIDI. By default
+    each chord occupies one bar; pass `rhythm` to control timing explicitly.
 
     Args:
         track_index: target MIDI track index.
@@ -497,19 +521,25 @@ def chord_progression(
             (4 beats), played in order.
         name: optional clip name. Defaults to chord symbols joined with " | ".
         velocity: MIDI velocity for every note (default 90).
-        octave: octave for the chord roots (default 4 → C4 = MIDI 60).
+        octave: octave for the first chord's root (default 4 → C4 = MIDI 60).
+        voicing: `"smooth"` (default) applies voice-leading so chords stay in a
+            stable register and common tones barely move — sounds like a player,
+            not root-position blocks leaping around. `"root"` keeps every chord
+            in literal root position from `octave` (the original v0.1 behavior).
 
     Returns:
         Same shape as create_clip.
 
     Raises:
         ValueError: mismatched chords/rhythm length, unparseable chord
-            symbol, invalid velocity, or slot collision.
+            symbol, invalid velocity, unknown voicing, or slot collision.
     """
     if not chords:
         raise ValueError("chords must not be empty")
     if not (1 <= velocity <= 127):
         raise ValueError(f"velocity {velocity} out of range 1-127")
+    if voicing not in ("smooth", "root"):
+        raise ValueError(f"voicing {voicing!r} must be 'smooth' or 'root'")
 
     if rhythm is None:
         rhythm = [
@@ -524,6 +554,7 @@ def chord_progression(
 
     notes: list[Note] = []
     max_end = 0.0
+    prev_notes: list[int] | None = None
     for i, (symbol, step) in enumerate(zip(chords, rhythm)):
         try:
             components = Chord(symbol).components()
@@ -537,13 +568,19 @@ def chord_progression(
         if duration <= 0:
             raise ValueError(f"rhythm[{i}]: duration_beat {duration} must be > 0")
 
-        for pitch in _chord_to_midi(components, octave):
+        if voicing == "smooth":
+            pitches = _voice_chord_smooth(components, octave, prev_notes)
+        else:
+            pitches = _chord_to_midi(components, octave)
+
+        for pitch in pitches:
             notes.append({
                 "pitch": pitch,
                 "start_beat": start,
                 "duration_beat": duration,
                 "velocity": velocity,
             })
+        prev_notes = pitches
         max_end = max(max_end, start + duration)
 
     length_bars = max(1, math.ceil(max_end / BEATS_PER_BAR))
