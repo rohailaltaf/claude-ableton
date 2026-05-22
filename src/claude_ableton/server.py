@@ -221,6 +221,11 @@ class LoadSampleToDrumPadResult(TypedDict):
     sample_path: str
 
 
+class DrumPadInfo(TypedDict):
+    note: int   # MIDI note that triggers the pad (e.g. 36 = kick)
+    name: str   # pad name, usually the loaded sample/drum name
+
+
 class AutomationStep(TypedDict):
     start_beat: float    # beats from clip start
     length_beats: float  # length of the constant-value segment
@@ -1826,6 +1831,30 @@ def load_sample_to_drum_pad(
         "pad_pitch": pad_pitch,
         "sample_path": sample_path,
     }
+
+
+@mcp.tool()
+def list_drum_pads(track_index: int, device_index: int) -> list[DrumPadInfo]:
+    """List the populated pads of a Drum Rack with their MIDI note and name.
+
+    Returns one entry per pad that has content (a sample/instrument loaded),
+    ordered by MIDI note. Empty pads are omitted. Use this to see what's
+    already in a kit before swapping a drum with `load_sample_to_drum_pad`
+    (e.g. "which note is the snare on?"). Returns an empty list if the device
+    at `device_index` is not a Drum Rack.
+
+    Args:
+        track_index: zero-based track index containing the Drum Rack.
+        device_index: zero-based device index of the Drum Rack on the track.
+    """
+    client = _get_client()
+    reply = client.query("/live/device/get/drum_pads", track_index, device_index)
+    # reply: (track_index, device_index, note1, name1, note2, name2, ...)
+    pad_data = reply[2:]
+    return [
+        {"note": int(pad_data[i]), "name": str(pad_data[i + 1])}
+        for i in range(0, len(pad_data), 2)
+    ]
 
 
 #--------------------------------------------------------------------------------
