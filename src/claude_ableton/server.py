@@ -1725,6 +1725,25 @@ def automate_mixer_parameter(
 
 
 @mcp.tool()
+def re_enable_automation() -> TransportResult:
+    """Re-enable any automation that Live has currently disabled.
+
+    Live marks a parameter "automation disabled" (orange dot in the UI)
+    whenever you touch a knob mid-playback or in some cases when
+    automation is added via the API. This call re-enables all
+    automation song-wide, equivalent to clicking Live's
+    "Re-Enable Automation" button.
+
+    Our `automate_*` tools already re-enable per-parameter after writing,
+    so this is rarely needed — useful mainly after manual UI tweaks that
+    might have orphaned an envelope.
+    """
+    client = _get_client()
+    client.send("/live/song/re_enable_automation")
+    return {"action": "automation re-enabled"}
+
+
+@mcp.tool()
 def clear_clip_envelopes(
     track_index: int, clip_slot: int
 ) -> ClearEnvelopesResult:

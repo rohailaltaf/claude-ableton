@@ -116,6 +116,7 @@ With Live open and Claude Desktop running, try:
 | `automate_device_parameter(track_index, clip_slot, device_index, parameter_index, steps)` | shipped | Write step automation on a device parameter into a clip's envelope. |
 | `automate_mixer_parameter(track_index, clip_slot, parameter, steps)` | shipped | Automate volume / panning / send_N on a clip's track. |
 | `clear_clip_envelopes(track_index, clip_slot)` | shipped | Remove all automation envelopes from a clip. |
+| `re_enable_automation()` | shipped | Equivalent to Live's "Re-Enable Automation" button — un-disables any parameters whose envelopes Live has currently bypassed. |
 | `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
 | `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
 | `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?)` | shipped | Write a chord progression as block chords in root position. |
