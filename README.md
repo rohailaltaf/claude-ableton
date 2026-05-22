@@ -83,6 +83,11 @@ With Live open and Claude Desktop running, try:
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |
 | `delete_clip(track_index, clip_slot)` | shipped | Delete a clip from a slot (destructive, Undo-able). |
 | `fire_scene(scene_index)` | shipped | Fire all clips in a scene (row), locking multiple tracks to the same downbeat. |
+| `list_scenes()` | shipped | List every scene (row) with index, name, and whether it's empty. |
+| `create_scene(index?, name?)` | shipped | Create a new empty scene (appends by default, or insert at an index). |
+| `duplicate_scene(scene_index)` | shipped | Duplicate a scene (and its clips) directly below it — fast section variations. |
+| `rename_scene(scene_index, name)` | shipped | Rename a scene (row). |
+| `delete_scene(scene_index)` | shipped | Delete a scene (row). Destructive, Undo-able. |
 | `set_tempo(bpm)` | shipped | Set the project tempo (20-999 BPM). |
 | `list_tracks()` | shipped | List every track with index, name, MIDI/audio, device count. |
 | `list_clips(track_index)` | shipped | List clip slots on a track with occupancy, name, length. |

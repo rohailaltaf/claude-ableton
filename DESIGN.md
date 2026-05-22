@@ -39,6 +39,7 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip (`/live/clip/stop`). Fire-and-forget. |
 | `delete_clip(track_index, clip_slot)` | shipped | Delete a clip via `/live/clip_slot/delete_clip`. Pairs with `create_clip` for replace-in-place. |
 | `fire_scene(scene_index)` | shipped | Fire all clips in a scene via `/live/scene/fire`. Locks downbeats across tracks. |
+| `list_scenes / create_scene / duplicate_scene / rename_scene / delete_scene` | shipped | Scene CRUD over stock `/live/song/{create,delete,duplicate}_scene`, `/live/song/get/num_scenes`, and `/live/scene/{get,set}/name`. No fork change — all endpoints ship with upstream AbletonOSC. |
 | `set_tempo(bpm)` | shipped | Set the project tempo via `/live/song/set/tempo`. Validates 20-999 BPM. |
 | `list_tracks()` | shipped | Iterates `num_tracks` queries to collect name/has_midi_input/num_devices per track. State-visibility primitive. |
 | `list_clips(track_index)` | shipped | Iterates clip slots; queries `has_clip` + `name` + `length` per occupied slot. |

@@ -68,6 +68,17 @@ class FireSceneResult(TypedDict):
     action: str
 
 
+class SceneInfo(TypedDict):
+    scene_index: int
+    name: str
+    is_empty: bool
+
+
+class SceneActionResult(TypedDict):
+    scene_index: int
+    action: str
+
+
 class SetTempoResult(TypedDict):
     bpm: float
     action: str
@@ -609,6 +620,99 @@ def fire_scene(scene_index: int) -> FireSceneResult:
     client = _get_client()
     client.send("/live/scene/fire", scene_index)
     return {"scene_index": scene_index, "action": "fired"}
+
+
+@mcp.tool()
+def list_scenes() -> list[SceneInfo]:
+    """List every scene (row) with its index, name, and whether it's empty.
+
+    Scenes are the horizontal rows of the Session grid. `is_empty` is True
+    when no track has a clip in that row. Useful for "where should the drop
+    go?" or finding a blank row before building a new section.
+    """
+    client = _get_client()
+    (n_scenes,) = client.query("/live/song/get/num_scenes")
+    scenes: list[SceneInfo] = []
+    for i in range(int(n_scenes)):
+        name_reply = client.query("/live/scene/get/name", i)
+        empty_reply = client.query("/live/scene/get/is_empty", i)
+        scenes.append({
+            "scene_index": i,
+            "name": str(name_reply[1]),
+            "is_empty": bool(empty_reply[1]),
+        })
+    return scenes
+
+
+@mcp.tool()
+def create_scene(index: int = -1, name: str | None = None) -> SceneActionResult:
+    """Create a new empty scene (row).
+
+    Args:
+        index: insertion position. -1 (default) appends at the end; any other
+            value inserts at that scene index, shifting later scenes down.
+        name: optional name for the new scene.
+
+    Returns:
+        Dict with the new scene's `scene_index` and `action`.
+    """
+    client = _get_client()
+    (before,) = client.query("/live/song/get/num_scenes")
+    before = int(before)
+    new_index = before if index < 0 else index
+    client.send("/live/song/create_scene", index)
+    time.sleep(LIVE_TICK_SEC)
+    if name:
+        client.send("/live/scene/set/name", new_index, name)
+    return {"scene_index": new_index, "action": "created"}
+
+
+@mcp.tool()
+def duplicate_scene(scene_index: int) -> SceneActionResult:
+    """Duplicate a scene, inserting the copy directly below it.
+
+    Copies every clip in the row, so it's the fast way to make a variation
+    of an existing section (e.g. duplicate the verse, then tweak).
+
+    Args:
+        scene_index: zero-based index of the scene to duplicate.
+
+    Returns:
+        Dict with the new (duplicated) scene's `scene_index` (scene_index + 1)
+        and `action`.
+    """
+    client = _get_client()
+    client.send("/live/song/duplicate_scene", scene_index)
+    time.sleep(LIVE_TICK_SEC)
+    return {"scene_index": scene_index + 1, "action": "duplicated"}
+
+
+@mcp.tool()
+def rename_scene(scene_index: int, name: str) -> SceneActionResult:
+    """Rename a scene (row).
+
+    Args:
+        scene_index: zero-based scene index.
+        name: new scene name.
+    """
+    client = _get_client()
+    client.send("/live/scene/set/name", scene_index, name)
+    return {"scene_index": scene_index, "action": "renamed"}
+
+
+@mcp.tool()
+def delete_scene(scene_index: int) -> SceneActionResult:
+    """Delete a scene (row). Destructive but Undo-able.
+
+    Live requires at least one scene to exist; deleting the only remaining
+    scene will fail in Live.
+
+    Args:
+        scene_index: zero-based scene index to delete.
+    """
+    client = _get_client()
+    client.send("/live/song/delete_scene", scene_index)
+    return {"scene_index": scene_index, "action": "deleted"}
 
 
 @mcp.tool()
