@@ -84,6 +84,33 @@ class SetTempoResult(TypedDict):
     action: str
 
 
+class TempoInfo(TypedDict):
+    bpm: float
+
+
+class TimeSignatureInfo(TypedDict):
+    numerator: int
+    denominator: int
+
+
+class PlaybackState(TypedDict):
+    is_playing: bool
+    current_beat: float
+
+
+class DuplicateTrackResult(TypedDict):
+    source_index: int
+    new_index: int
+
+
+class DuplicateClipResult(TypedDict):
+    source_track: int
+    source_clip_slot: int
+    target_track: int
+    target_clip_slot: int
+    action: str
+
+
 class RhythmStep(TypedDict):
     start_beat: float
     duration_beat: float
@@ -173,6 +200,11 @@ class ReturnTrackInfo(TypedDict):
 
 class CreateReturnTrackResult(TypedDict):
     return_index: int
+
+
+class DeleteReturnTrackResult(TypedDict):
+    return_index: int
+    action: str
 
 
 class LoadAudioEffectOnReturnResult(TypedDict):
@@ -762,6 +794,146 @@ def set_tempo(bpm: float) -> SetTempoResult:
     client = _get_client()
     client.send("/live/song/set/tempo", float(bpm))
     return {"bpm": float(bpm), "action": "set"}
+
+
+@mcp.tool()
+def get_tempo() -> TempoInfo:
+    """Read the current project tempo in BPM."""
+    client = _get_client()
+    (bpm,) = client.query("/live/song/get/tempo")
+    return {"bpm": float(bpm)}
+
+
+@mcp.tool()
+def get_time_signature() -> TimeSignatureInfo:
+    """Read the project time signature (numerator/denominator).
+
+    Note: most tools assume 4/4 when converting bars↔beats. This reports
+    what Live actually has set so you can detect a non-4/4 project.
+    """
+    client = _get_client()
+    (num,) = client.query("/live/song/get/signature_numerator")
+    (den,) = client.query("/live/song/get/signature_denominator")
+    return {"numerator": int(num), "denominator": int(den)}
+
+
+@mcp.tool()
+def get_playback_state() -> PlaybackState:
+    """Read transport state: whether Live is playing and the current position.
+
+    `current_beat` is the playhead position in beats from the start of the
+    arrangement (Live's `current_song_time`).
+    """
+    client = _get_client()
+    (playing,) = client.query("/live/song/get/is_playing")
+    (beat,) = client.query("/live/song/get/current_song_time")
+    return {"is_playing": bool(playing), "current_beat": float(beat)}
+
+
+@mcp.tool()
+def duplicate_track(track_index: int) -> DuplicateTrackResult:
+    """Duplicate a track, inserting the copy directly to its right.
+
+    Copies the track's instrument, devices, and all its clips — the fast way
+    to make a variant (e.g. duplicate the Keys track to layer a second sound,
+    or branch a new section). The new track lands at `track_index + 1` and
+    everything to its right shifts over by one.
+
+    Args:
+        track_index: zero-based index of the track to duplicate.
+
+    Returns:
+        Dict with `source_index` and the new track's `new_index`.
+    """
+    client = _get_client()
+    client.send("/live/song/duplicate_track", track_index)
+    time.sleep(LIVE_TICK_SEC)
+    return {"source_index": track_index, "new_index": track_index + 1}
+
+
+@mcp.tool()
+def duplicate_clip(
+    track_index: int,
+    clip_slot: int,
+    target_track: int,
+    target_clip_slot: int,
+) -> DuplicateClipResult:
+    """Copy a clip from one slot into another slot (same or different track).
+
+    The fast way to reuse material across scenes/sections without rebuilding
+    notes — e.g. copy the verse chords into the chorus slot, then tweak. The
+    target slot must be empty. Copying to a different track only makes sense
+    when both are the same type (MIDI→MIDI).
+
+    Args:
+        track_index: source track index.
+        clip_slot: source clip slot index.
+        target_track: destination track index.
+        target_clip_slot: destination clip slot index (must be empty).
+    """
+    client = _get_client()
+    client.send(
+        "/live/clip_slot/duplicate_clip_to",
+        track_index, clip_slot, target_track, target_clip_slot,
+    )
+    time.sleep(LIVE_TICK_SEC)
+    return {
+        "source_track": track_index,
+        "source_clip_slot": clip_slot,
+        "target_track": target_track,
+        "target_clip_slot": target_clip_slot,
+        "action": "duplicated",
+    }
+
+
+@mcp.tool()
+def set_clip_name(track_index: int, clip_slot: int, name: str) -> ClipActionResult:
+    """Rename the clip in the given slot.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot index (must contain a clip).
+        name: new clip name.
+    """
+    client = _get_client()
+    client.send("/live/clip/set/name", track_index, clip_slot, name)
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "renamed"}
+
+
+@mcp.tool()
+def set_clip_loop(
+    track_index: int, clip_slot: int, looping: bool
+) -> ClipActionResult:
+    """Turn a clip's looping on or off.
+
+    With looping off, the clip plays once and stops — useful for one-shot
+    risers/FX or a non-repeating outro chord. On (default for most clips) it
+    repeats for as long as the slot is playing.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot index (must contain a clip).
+        looping: True to loop, False for one-shot.
+    """
+    client = _get_client()
+    client.send("/live/clip/set/looping", track_index, clip_slot, int(bool(looping)))
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "loop set"}
+
+
+@mcp.tool()
+def set_clip_color(
+    track_index: int, clip_slot: int, color: int
+) -> ClipActionResult:
+    """Set a clip's color.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot index (must contain a clip).
+        color: packed RGB integer (0xRRGGBB, e.g. 0xFF8800 = orange).
+    """
+    client = _get_client()
+    client.send("/live/clip/set/color", track_index, clip_slot, int(color))
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "color set"}
 
 
 @mcp.tool()
@@ -1548,6 +1720,22 @@ def create_return_track() -> CreateReturnTrackResult:
     client.send("/live/song/create_return_track")
     time.sleep(LIVE_TICK_SEC)
     return {"return_index": int(before)}
+
+
+@mcp.tool()
+def delete_return_track(return_index: int) -> DeleteReturnTrackResult:
+    """Delete a return track. Destructive but Undo-able.
+
+    Removes the return track and any sends pointing at it. Return indices
+    are independent of regular track indices (see `list_return_tracks`).
+
+    Args:
+        return_index: zero-based return-track index to delete.
+    """
+    client = _get_client()
+    client.send("/live/song/delete_return_track", return_index)
+    time.sleep(LIVE_TICK_SEC)
+    return {"return_index": return_index, "action": "deleted"}
 
 
 @mcp.tool()
