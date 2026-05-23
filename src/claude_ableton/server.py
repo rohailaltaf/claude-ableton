@@ -1646,6 +1646,128 @@ def list_midi_effects(path: str = "") -> ListPresetsResult:
     return {"path": str(reply[0]), "children": children}
 
 
+#--------------------------------------------------------------------------------
+# Additional browser nodes — the rest of Live's Application.Browser tree beyond
+# instruments/drums/audio_effects/midi_effects/samples. Each wraps a fork
+# /live/browser/list_<node> endpoint that's byte-capped + paginated; this
+# helper pages through and returns the complete list in one call.
+#--------------------------------------------------------------------------------
+
+
+def _list_browser_node(address: str, path: str) -> ListPresetsResult:
+    """Auto-paginate a fork browser-node listing into a full {path, children}."""
+    client = _get_client()
+    children: list[str] = []
+    offset = 0
+    while True:
+        # Reply shape: (path, offset, total_count, name1, name2, ...)
+        reply = client.query(address, path, offset)
+        total = int(reply[2])
+        page = [str(x) for x in reply[3:]]
+        children.extend(page)
+        offset += len(page)
+        if not page or offset >= total:
+            break
+    return {"path": path, "children": children}
+
+
+@mcp.tool()
+def list_packs(path: str = "") -> ListPresetsResult:
+    """List content in Live's Packs browser at the given path.
+
+    Walks `app.browser.packs` — installed Packs (Chop and Swing, Drum
+    Machines, Electric Keyboards, Retro Synths, Core Library, etc.). A huge
+    share of premium sound lives in packs, not stock devices. Empty path
+    returns the pack list; drill in with a slash-separated path. To load a
+    found item onto a track, use `load_preset` / `load_drum_kit` /
+    `load_audio_effect` / `load_sample` with the appropriate path.
+
+    Args:
+        path: slash-separated packs-browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_packs", path)
+
+
+@mcp.tool()
+def list_plugins(path: str = "") -> ListPresetsResult:
+    """List third-party plugins in Live's Plugins browser.
+
+    Walks `app.browser.plugins` — VST/VST3/AU instruments and effects
+    installed on the system (Vital, Valhalla, Soundtoys, NI Komplete, etc.).
+    Empty path returns the top-level plugin groupings.
+
+    Args:
+        path: slash-separated plugins-browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_plugins", path)
+
+
+@mcp.tool()
+def list_user_library(path: str = "") -> ListPresetsResult:
+    """List the User Library — your own saved presets, racks, samples, templates.
+
+    Walks `app.browser.user_library`. This is where personally-saved content
+    accumulates over time. Empty path returns the top-level folders.
+
+    Args:
+        path: slash-separated user-library path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_user_library", path)
+
+
+@mcp.tool()
+def list_sounds(path: str = "") -> ListPresetsResult:
+    """List Live 12's Sounds browser (content organized by sound type).
+
+    Walks `app.browser.sounds` — instruments/presets categorized by sound
+    (bass, keys, pads, leads, etc.) across all sources, rather than by device.
+    A different access pattern than `list_presets` (which is by device).
+
+    Args:
+        path: slash-separated sounds-browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_sounds", path)
+
+
+@mcp.tool()
+def list_browser_clips(path: str = "") -> ListPresetsResult:
+    """List browsable clips/loops in Live's Clips browser.
+
+    Walks `app.browser.clips` — browsable audio/MIDI loops and one-shots.
+    (Named `list_browser_clips` to avoid clashing with `list_clips`, which
+    lists a track's Session clip slots.)
+
+    Args:
+        path: slash-separated clips-browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_clips", path)
+
+
+@mcp.tool()
+def list_max_for_live(path: str = "") -> ListPresetsResult:
+    """List Max for Live devices in Live's Max for Live browser.
+
+    Walks `app.browser.max_for_live` — M4L instruments, effects, and tools.
+
+    Args:
+        path: slash-separated max-for-live browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_max_for_live", path)
+
+
+@mcp.tool()
+def list_current_project(path: str = "") -> ListPresetsResult:
+    """List content the current Live set references (its Current Project node).
+
+    Walks `app.browser.current_project` — samples/clips/presets used by the
+    open set. Useful when picking up an existing project to see what it draws on.
+
+    Args:
+        path: slash-separated current-project browser path; "" for top-level.
+    """
+    return _list_browser_node("/live/browser/list_current_project", path)
+
+
 @mcp.tool()
 def load_midi_effect(track_index: int, effect_path: str) -> LoadMidiEffectResult:
     """Load a MIDI effect onto a MIDI track by browser path.
