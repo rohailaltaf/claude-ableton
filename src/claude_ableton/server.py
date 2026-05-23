@@ -111,6 +111,19 @@ class DuplicateClipResult(TypedDict):
     action: str
 
 
+class ArrangementClipResult(TypedDict):
+    track_index: int
+    source_clip_slot: int
+    arrangement_beat: float
+    action: str
+
+
+class ArrangementClipInfo(TypedDict):
+    name: str
+    start_beat: float
+    length_beats: float
+
+
 class RhythmStep(TypedDict):
     start_beat: float
     duration_beat: float
@@ -934,6 +947,77 @@ def set_clip_color(
     client = _get_client()
     client.send("/live/clip/set/color", track_index, clip_slot, int(color))
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "color set"}
+
+
+#--------------------------------------------------------------------------------
+# Arrangement view — place Session clips onto the linear timeline. This is the
+# only LOM path to build a finite, fixed arrangement (you can't create
+# arrangement clips from raw notes). Build sections as Session clips, then
+# stamp them along the timeline at computed beat positions.
+#--------------------------------------------------------------------------------
+
+
+@mcp.tool()
+def duplicate_clip_to_arrangement(
+    track_index: int, clip_slot: int, arrangement_beat: float
+) -> ArrangementClipResult:
+    """Copy a Session clip onto the track's Arrangement timeline at a beat.
+
+    This is how you build a real, finite track (e.g. a 2-minute song) instead
+    of looping Session scenes. Stamp a section clip at successive beat positions
+    to lay out intro/verse/chorus/etc. At 4/4, bar N starts at beat (N-1)*4.
+
+    Example — lay an 8-beat (2-bar) loop four times back-to-back:
+        duplicate_clip_to_arrangement(0, 0, 0)
+        duplicate_clip_to_arrangement(0, 0, 8)
+        duplicate_clip_to_arrangement(0, 0, 16)
+        duplicate_clip_to_arrangement(0, 0, 24)
+
+    Args:
+        track_index: track that owns both the source Session clip and the
+            Arrangement destination.
+        clip_slot: source Session clip slot index (must contain a clip).
+        arrangement_beat: destination position on the timeline, in beats from
+            the start (beat 0 = bar 1).
+
+    Returns:
+        Dict with track_index, source_clip_slot, arrangement_beat, action.
+    """
+    if arrangement_beat < 0:
+        raise ValueError(f"arrangement_beat {arrangement_beat} must be >= 0")
+    client = _get_client()
+    client.send(
+        "/live/track/duplicate_clip_to_arrangement",
+        track_index, clip_slot, float(arrangement_beat),
+    )
+    time.sleep(LIVE_TICK_SEC)
+    return {
+        "track_index": track_index,
+        "source_clip_slot": clip_slot,
+        "arrangement_beat": float(arrangement_beat),
+        "action": "placed",
+    }
+
+
+@mcp.tool()
+def list_arrangement_clips(track_index: int) -> list[ArrangementClipInfo]:
+    """List the clips on a track's Arrangement timeline (name/start/length).
+
+    Returns one entry per arrangement clip with its name, start position in
+    beats, and length in beats — ordered as Live reports them. Use this to
+    verify a timeline layout or to find where to append the next section.
+
+    Args:
+        track_index: zero-based track index.
+    """
+    client = _get_client()
+    names = client.query("/live/track/get/arrangement_clips/name", track_index)[1:]
+    starts = client.query("/live/track/get/arrangement_clips/start_time", track_index)[1:]
+    lengths = client.query("/live/track/get/arrangement_clips/length", track_index)[1:]
+    return [
+        {"name": str(n), "start_beat": float(s), "length_beats": float(l)}
+        for n, s, l in zip(names, starts, lengths)
+    ]
 
 
 @mcp.tool()
