@@ -949,6 +949,57 @@ def set_clip_color(
     return {"track_index": track_index, "clip_slot": clip_slot, "action": "color set"}
 
 
+# Live's RecordingQuantization enum (what Clip.quantize accepts). Values
+# verified empirically against Live 12 (1-8 valid; 0/9+ raise "Invalid
+# quantization"). The combo grids (1/8+1/8T = 4, 1/16+1/16T = 7) are valid
+# in Live but omitted from the friendly map.
+QUANTIZE_GRID: dict[str, int] = {
+    "1/4": 1,
+    "1/8": 2,
+    "1/8T": 3,
+    "1/16": 5,
+    "1/16T": 6,
+    "1/32": 8,
+}
+
+
+@mcp.tool()
+def quantize_clip(
+    track_index: int,
+    clip_slot: int,
+    grid: str = "1/16",
+    amount: float = 1.0,
+) -> ClipActionResult:
+    """Quantize a clip's note timing toward a grid.
+
+    Snaps note start times to the grid. `amount=1.0` is a full snap (tight);
+    values below 1.0 pull notes partway, preserving some of the original feel
+    — e.g. `amount=0.5` tightens a sloppy take without killing its groove.
+
+    Args:
+        track_index: zero-based track index.
+        clip_slot: zero-based clip slot index (must contain a MIDI clip).
+        grid: grid resolution — one of "1/4", "1/8", "1/8T", "1/16", "1/16T",
+            "1/32" (T = triplet). Default "1/16".
+        amount: snap strength in [0.0, 1.0]. Default 1.0 (full).
+
+    Raises:
+        ValueError: unknown grid or amount out of range.
+    """
+    key = grid.upper()
+    if key not in QUANTIZE_GRID:
+        raise ValueError(
+            f"unknown grid {grid!r}; choose from {sorted(QUANTIZE_GRID)}"
+        )
+    if not (0.0 <= amount <= 1.0):
+        raise ValueError(f"amount {amount} out of range 0.0-1.0")
+    client = _get_client()
+    client.send(
+        "/live/clip/quantize", track_index, clip_slot, QUANTIZE_GRID[key], float(amount)
+    )
+    return {"track_index": track_index, "clip_slot": clip_slot, "action": "quantized"}
+
+
 #--------------------------------------------------------------------------------
 # Arrangement view — place Session clips onto the linear timeline. This is the
 # only LOM path to build a finite, fixed arrangement (you can't create
