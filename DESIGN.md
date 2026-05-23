@@ -102,6 +102,9 @@ These were scoped as candidate capabilities and ruled out after confirming the L
 - **Saving / loading / exporting Live Sets.** No `save` method exists on `Song` or `Application`. The LOM cannot save the set or open a different one.
 - **Audio clips from a file.** `Song.create_audio_track` can make an empty audio track, but there is no API to drop an audio file into a Session slot as an audio clip — audio clips only come from recording. This is exactly why samples are shipped Simpler-wrapped on MIDI tracks.
 - **Freeze / flatten tracks.** No LOM support of any kind.
+- **Clip follow actions.** Live 12 removed `follow_action_a/b/enabled/time` from the `Clip` object (probed: `'Clip' object has no attribute ...`), so auto-advancing clips/scenes can't be scripted. (To build a fixed track instead, use Arrangement writing — see below.)
+
+**Arrangement writing IS supported** (added post-MVP): `duplicate_clip_to_arrangement` stamps a Session clip onto the timeline at a beat position via `Track.duplicate_clip_to_arrangement` — the only LOM path to a linear arrangement (raw-note arrangement clips still aren't creatable). `list_arrangement_clips` reads the timeline back.
 - **Smooth-curve automation breakpoints.** Live's API only exposes step envelopes natively; smooth ramps are approximated with many small adjacent steps (shipped).
 
 ## Constraints worth knowing

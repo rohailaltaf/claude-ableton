@@ -133,12 +133,12 @@ See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrum
 
 ## Limitations (v0.1)
 
-- **Session view only.** Created clips live in the Session view grid, not the Arrangement view. Switch Live to Session view (Tab key) to see and trigger them.
+- **Clips are authored in Session view.** New clips and notes are written into the Session grid (Tab to view). To build a fixed, finite track you can stamp Session clips onto the **Arrangement timeline** with `duplicate_clip_to_arrangement` — that's the one supported path to a linear arrangement (you can't write notes straight to Arrangement).
 - **4/4 time assumed.** `length_bars` is multiplied by 4 to get beats; we don't read or set the project time signature.
 - **No time signature, no playback position.** Can fire clips and scenes, start/stop/continue the global transport, and set tempo. Can't yet change the project time signature or read the current playback position.
 - **MIDI tracks only.** Instruments, drum kits, samples (Simpler-wrapped), audio effects, MIDI effects, return tracks, sends, and sidechain routing are all supported on/around MIDI tracks. Empty audio tracks can be created, but see the API ceilings below.
 - **Instrument allowlist** covers the full top-level instrument set of Live 12 Suite (synths, samplers, racks, Drum Synths) — see [DESIGN.md](DESIGN.md). For named presets, use `load_preset` with a browser path. Intro/Standard editions ship fewer instruments.
-- **Live API ceilings.** Some things Live's scripting API simply doesn't expose, so they can't be built: grouping tracks, saving/loading/exporting the Set, dropping an audio file in as a clip (audio clips only come from recording — hence the Simpler workaround), and freezing/flattening tracks. Automation is step-only (smooth ramps are approximated with many small steps). See [DESIGN.md](DESIGN.md) for details.
+- **Live API ceilings.** Some things Live's scripting API simply doesn't expose, so they can't be built: grouping tracks, saving/loading/exporting the Set, dropping an audio file in as a clip (audio clips only come from recording — hence the Simpler workaround), freezing/flattening tracks, and clip **follow actions** (Live 12 removed `follow_action_*` from the Clip API). Automation is step-only (smooth ramps are approximated with many small steps). See [DESIGN.md](DESIGN.md) for details.
 
 ## Security
 
