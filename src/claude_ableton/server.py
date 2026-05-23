@@ -9,7 +9,7 @@ from typing import TypedDict
 from mcp.server.fastmcp import FastMCP
 from pychord import Chord
 
-from claude_ableton.osc import AbletonClient
+from claude_ableton.osc import AbletonClient, QueryTimeout
 
 
 class CreateTrackResult(TypedDict):
@@ -302,6 +302,9 @@ TIME_QUANTUM = 1e-6  # round note times to avoid LOM denormal issues
 LIVE_TICK_SEC = 0.15
 LOAD_TIMEOUT_SEC = 2.0
 LOAD_POLL_SEC = 0.1
+# Drum kits are multisampled and can take many seconds to load (big packs
+# like Drum Machines), during which Live is too busy to answer the poll query.
+DRUM_KIT_LOAD_TIMEOUT_SEC = 20.0
 
 # Allowlist of built-in Live 12 Suite instruments.
 # Keys are lowercase identifiers exposed to callers; values are the exact
@@ -1121,13 +1124,26 @@ def list_drum_kits(path: str = "") -> ListPresetsResult:
 
     Empty children list means the path doesn't exist (or has no children).
 
+    Big packs (e.g. Drum Machines) have hundreds of kits — more than fit in
+    one OSC/UDP packet — so this pages through the fork's byte-capped reply
+    internally and returns the complete list in one call.
+
     Args:
         path: slash-separated drum-browser path; "" for top-level.
     """
     client = _get_client()
-    reply = client.query("/live/browser/list_drum_kits", path)
-    children = [str(x) for x in reply[1:]]
-    return {"path": str(reply[0]), "children": children}
+    children: list[str] = []
+    offset = 0
+    while True:
+        # Reply shape: (path, offset, total_count, name1, name2, ...)
+        reply = client.query("/live/browser/list_drum_kits", path, offset)
+        total = int(reply[2])
+        page = [str(x) for x in reply[3:]]
+        children.extend(page)
+        offset += len(page)
+        if not page or offset >= total:
+            break
+    return {"path": path, "children": children}
 
 
 @mcp.tool()
@@ -1156,10 +1172,17 @@ def load_drum_kit(track_index: int, kit_path: str) -> LoadPresetResult:
     devices_before = _num_devices(client, track_index)
     client.send("/live/track/load_drum_kit", track_index, kit_path)
 
-    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    # Drum kits load slowly (many samples); use a generous deadline and treat a
+    # poll-query timeout as "Live still busy loading" rather than a failure —
+    # the device-count query can't get through while samples are streaming in.
+    deadline = time.monotonic() + DRUM_KIT_LOAD_TIMEOUT_SEC
     while time.monotonic() < deadline:
         time.sleep(LOAD_POLL_SEC)
-        if _num_devices(client, track_index) > devices_before:
+        try:
+            count = _num_devices(client, track_index)
+        except QueryTimeout:
+            continue
+        if count > devices_before:
             return {
                 "track_index": track_index,
                 "preset_path": kit_path,
@@ -1168,7 +1191,7 @@ def load_drum_kit(track_index: int, kit_path: str) -> LoadPresetResult:
 
     raise RuntimeError(
         f"Load timed out: drum kit {kit_path!r} did not appear on track "
-        f"{track_index} within {LOAD_TIMEOUT_SEC:.0f}s. The path may not "
+        f"{track_index} within {DRUM_KIT_LOAD_TIMEOUT_SEC:.0f}s. The path may not "
         "exist or may not be loadable; try list_drum_kits to verify."
     )
 
