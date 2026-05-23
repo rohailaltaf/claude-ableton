@@ -1898,6 +1898,158 @@ def load_audio_effect_on_return(
     return {"return_index": return_index, "effect_path": effect_path}
 
 
+#--------------------------------------------------------------------------------
+# Master (Main) track — Live's final output bus. It lives outside song.tracks,
+# so the regular track/device tools can't reach it; these wrap our fork's
+# /live/master_track/* endpoints. This is where a mastering chain goes
+# (Glue Compressor → Limiter), plus the final output level.
+#--------------------------------------------------------------------------------
+
+
+class MasterDeviceInfo(TypedDict):
+    device_index: int
+    name: str
+
+
+class MasterParamInfo(TypedDict):
+    parameter_index: int
+    name: str
+    value: float
+    min: float
+    max: float
+
+
+class LoadMasterEffectResult(TypedDict):
+    effect_path: str
+    device_count: int
+
+
+class MasterVolumeInfo(TypedDict):
+    volume: float
+
+
+@mcp.tool()
+def load_audio_effect_on_master(effect_path: str) -> LoadMasterEffectResult:
+    """Load an audio effect onto the Main (master) track — for mastering.
+
+    The Main track is Live's final output bus, so this is where a mastering
+    chain lives. Effects append in order, so load front-to-back: e.g.
+    `load_audio_effect_on_master("Glue Compressor")` then
+    `load_audio_effect_on_master("Limiter")` puts the brickwall limiter last
+    (correct). Use `list_audio_effects` for paths, `get_master_devices` to
+    inspect the resulting chain.
+
+    Args:
+        effect_path: slash-separated path under `app.browser.audio_effects`.
+
+    Returns:
+        Dict with effect_path and the Main track's new device_count.
+
+    Raises:
+        RuntimeError: if no new device appears within the load timeout (2s).
+    """
+    client = _get_client()
+    (before,) = client.query("/live/master_track/get/num_devices")
+    before = int(before)
+    client.send("/live/master_track/load_audio_effect", effect_path)
+    deadline = time.monotonic() + LOAD_TIMEOUT_SEC
+    while time.monotonic() < deadline:
+        time.sleep(LOAD_POLL_SEC)
+        (count,) = client.query("/live/master_track/get/num_devices")
+        if int(count) > before:
+            return {"effect_path": effect_path, "device_count": int(count)}
+    raise RuntimeError(
+        f"Load timed out: {effect_path!r} did not appear on the Main track "
+        f"within {LOAD_TIMEOUT_SEC:.0f}s. Check the path with list_audio_effects."
+    )
+
+
+@mcp.tool()
+def get_master_devices() -> list[MasterDeviceInfo]:
+    """List the devices on the Main (master) track in chain order.
+
+    Use to inspect the mastering chain (e.g. confirm Glue Compressor → Limiter)
+    and to find the device_index for get/set_master_device_parameter.
+    """
+    client = _get_client()
+    reply = client.query("/live/master_track/get/devices/name")
+    return [{"device_index": i, "name": str(n)} for i, n in enumerate(reply)]
+
+
+@mcp.tool()
+def get_master_device_parameters(device_index: int) -> list[MasterParamInfo]:
+    """List a Main-track device's parameters with current value and range.
+
+    Use to find the parameter_index + value before tuning a master device —
+    e.g. Glue Compressor "Threshold"/"Ratio", Limiter "Ceiling"/"Gain".
+
+    Args:
+        device_index: zero-based device index on the Main track (from
+            `get_master_devices`).
+    """
+    client = _get_client()
+    reply = client.query("/live/master_track/get/device/parameters", device_index)
+    out: list[MasterParamInfo] = []
+    for i in range(0, len(reply), 4):
+        out.append({
+            "parameter_index": i // 4,
+            "name": str(reply[i]),
+            "value": float(reply[i + 1]),
+            "min": float(reply[i + 2]),
+            "max": float(reply[i + 3]),
+        })
+    return out
+
+
+@mcp.tool()
+def set_master_device_parameter(
+    device_index: int, parameter_index: int, value: float
+) -> MasterParamInfo:
+    """Set a parameter on a Main-track device (comp threshold, limiter ceiling…).
+
+    Args:
+        device_index: zero-based device index on the Main track.
+        parameter_index: zero-based parameter index (from
+            `get_master_device_parameters`).
+        value: target value within the parameter's [min, max] range
+            (silently clamped by Live if out of range).
+
+    Returns:
+        The parameter's info after setting (re-read to confirm).
+    """
+    client = _get_client()
+    client.send(
+        "/live/master_track/set/device/parameter",
+        device_index, parameter_index, float(value),
+    )
+    time.sleep(LIVE_TICK_SEC)
+    params = get_master_device_parameters(device_index)
+    return params[parameter_index]
+
+
+@mcp.tool()
+def get_master_volume() -> MasterVolumeInfo:
+    """Read the Main (master) track output volume (Live normalized, ~0.85 = 0 dB)."""
+    client = _get_client()
+    (vol,) = client.query("/live/master_track/get/volume")
+    return {"volume": float(vol)}
+
+
+@mcp.tool()
+def set_master_volume(volume: float) -> MasterVolumeInfo:
+    """Set the Main (master) track output volume — the final output level.
+
+    Args:
+        volume: Live's normalized volume in [0.0, 1.0]. ~0.85 = 0 dB unity,
+            1.0 = +6 dB. Trim down slightly if a brickwall limiter clips.
+    """
+    if not (0.0 <= volume <= 1.0):
+        raise ValueError(f"volume {volume} out of range 0.0-1.0")
+    client = _get_client()
+    client.send("/live/master_track/set/volume", float(volume))
+    return {"volume": float(volume)}
+
+
 @mcp.tool()
 def set_send(
     track_index: int, send_index: int, value: float
