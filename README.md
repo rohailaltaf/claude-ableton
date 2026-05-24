@@ -1,9 +1,9 @@
 # claude-ableton
 
-Make music in **Ableton Live 12** by talking to Claude. This is a local MCP
-server that lets Claude create tracks, load instruments / drum kits / samples,
-write MIDI clips and chord progressions, mix, route sidechains, automate
-parameters, build arrangements, and master.
+Make music in **Ableton Live 12** by talking to Claude. **claude-ableton** is a
+Claude plugin that lets you create tracks, load instruments / drum kits /
+samples, write MIDI clips and chord progressions, mix, route sidechains,
+automate parameters, build arrangements, and master — all by chatting.
 
 ```
 "Make a lo-fi beat at 82 BPM: Boom Bap drums, a warm Rhodes on
@@ -20,8 +20,8 @@ Everything materializes in your open Live set. ~81 tools.
 - **macOS** — Windows support is planned.
 - **Ableton Live 12** — Suite recommended; Intro/Standard ship fewer built-in
   instruments.
-- A client that speaks MCP: **Claude Code**, **Claude Desktop**, or any other
-  MCP client (Cursor, Codex, …).
+- **Claude Code** or **Claude Desktop** for the one-step plugin install — or any
+  other MCP client (Cursor, Codex, …) via the manual config below.
 - **Node 18+** *only* if you install via the `npx` path below. Claude Code and
   Claude Desktop bundle their own Node, so the plugin install needs nothing
   extra.
@@ -65,7 +65,7 @@ Add this to your client's MCP config:
 
 ## One-time Ableton setup
 
-On its first launch the server installs the bundled AbletonOSC Remote Script
+The first time it runs, the plugin installs the bundled AbletonOSC Remote Script
 into your Live User Library automatically. You then enable it once:
 
 1. Start (or restart) **Ableton Live**.
@@ -73,8 +73,8 @@ into your Live User Library automatically. You then enable it once:
 3. Under **Control Surface**, select **AbletonOSC**. (Leave Input/Output set to
    None.)
 
-That's it. The server checks the Remote Script version on every launch and
-re-installs it if the plugin updated, so you stay in sync.
+That's it. The plugin checks the Remote Script version on every launch and
+re-installs it if it changed, so you stay in sync.
 
 ---
 
@@ -140,7 +140,7 @@ instrument allowlist) and design decisions.
 
 ## Security
 
-This server grants Claude write access to your **active Ableton Live session**.
+This plugin grants Claude write access to your **active Ableton Live session**.
 The OSC bridge is localhost-only (no network port), but treat it like any local
 automation tool: review what Claude proposes before running it if you have
 unsaved work. Use Live's Undo (Cmd+Z) freely.
@@ -162,9 +162,9 @@ npm run package      # vendor the Remote Script + typecheck + bundle dist/index.
 - `node scripts/integration-test.mjs` — drive all 81 tools against a running
   Live (needs OSC port 11001 free and a scratch set open).
 
-The server is bundled into one self-contained file with no runtime
+The plugin's server is bundled into one self-contained file with no runtime
 dependencies, so the committed `dist/index.js` and `vendor/AbletonOSC` run
-directly under the plugin.
+directly when the plugin loads.
 
 ---
 
