@@ -16,5 +16,10 @@
     "mcp",
     "osc"
   ],
-  "mcpServers": "./.mcp.json"
+  "mcpServers": {
+    "ableton": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
+    }
+  }
 }
