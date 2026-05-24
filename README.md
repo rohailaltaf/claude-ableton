@@ -32,19 +32,24 @@ cloud round-trip for your audio.
 
 ## Install
 
-### Claude Code / Claude Desktop (plugin — recommended)
+The plugin bundles the MCP server **and** the AbletonOSC Remote Script, and
+**auto-updates** when the marketplace refreshes.
 
-Add the marketplace, then install the plugin:
+### Claude Code (plugin — recommended)
+
+Run the slash commands to add the marketplace, then install:
 
 ```
 /plugin marketplace add rohailaltaf/claude-ableton
 /plugin install claude-ableton@claude-ableton
 ```
 
-In **Claude Desktop** you can run the same `/plugin` commands, or add the
-marketplace and install the plugin from the Plugins section of Settings. The
-plugin bundles the MCP server and the AbletonOSC Remote Script, and
-**auto-updates** when you refresh the marketplace.
+### Claude Desktop (plugin — recommended)
+
+Use Claude Desktop's **Add marketplace** feature (in its plugin settings), add
+`rohailaltaf/claude-ableton`, then install the **claude-ableton** plugin from it.
+(The `/plugin` slash commands are Claude Code-only — Desktop uses the marketplace
+UI instead.)
 
 ### Cursor, Codex, or any other MCP client (npx)
 
