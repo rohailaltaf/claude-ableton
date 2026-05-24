@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Entry point for the claude-ableton MCP server.
  *
