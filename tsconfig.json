@@ -16,5 +16,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/claude_ableton"]
+  "exclude": ["node_modules", "dist"]
 }
