@@ -51,6 +51,8 @@ Use Claude Desktop's **Add marketplace** feature (in its plugin settings), add
 (The `/plugin` slash commands are Claude Code-only — Desktop uses the marketplace
 UI instead.)
 
+![Adding the claude-ableton marketplace in Claude Desktop](docs/install-desktop.gif)
+
 ### Cursor, Codex, or any other MCP client (npx)
 
 Add this to your client's MCP config (no install, no clone — `npx` fetches and
