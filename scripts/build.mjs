@@ -8,7 +8,10 @@
  * built-ins stay external. The shebang banner also makes the file usable as the
  * npm `bin` (for the `npx -y github:...` path).
  */
+import { chmodSync } from "node:fs";
 import { build } from "esbuild";
+
+const outfile = "dist/index.js";
 
 await build({
   entryPoints: ["src/index.ts"],
@@ -16,9 +19,11 @@ await build({
   platform: "node",
   format: "esm",
   target: "node18",
-  outfile: "dist/index.js",
+  outfile,
   banner: { js: "#!/usr/bin/env node" },
   legalComments: "none",
 });
 
-console.error("[build] bundled -> dist/index.js");
+chmodSync(outfile, 0o755); // executable for the `npx`/bin path
+
+console.error(`[build] bundled -> ${outfile}`);

@@ -35,10 +35,23 @@ try {
   console.error(`[vendor] checking out ${PINNED_REF}`);
   run(`git -C "${tmp}" checkout --quiet ${PINNED_REF}`);
 
-  // Strip VCS + non-distribution cruft so the installed copy is a plain dir
-  // (the runtime installer treats a .git tree as a dev checkout and skips it).
-  fs.rmSync(path.join(tmp, ".git"), { recursive: true, force: true });
-  fs.rmSync(path.join(tmp, "logs"), { recursive: true, force: true });
+  // Strip VCS + non-runtime cruft so the installed copy is a clean, minimal
+  // Remote Script (the runtime installer treats a .git tree as a dev checkout
+  // and skips it). Live only needs __init__.py, manager.py, abletonosc/, and
+  // the vendored pythonosc/. LICENSE.md + README.md are KEPT for attribution.
+  const strip = [
+    ".git",
+    ".github",
+    ".gitignore",
+    "logs",
+    "tests",
+    "client",
+    "run-console.py",
+    "CONTRIBUTING.md",
+  ];
+  for (const rel of strip) {
+    fs.rmSync(path.join(tmp, rel), { recursive: true, force: true });
+  }
 
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(vendorDir, { recursive: true });

@@ -5,7 +5,6 @@ __pycache__/
 *.so
 .Python
 build/
-dist/
 *.egg-info/
 .venv/
 venv/
@@ -23,8 +22,10 @@ env/
 node_modules/
 *.tsbuildinfo
 
-# Vendored Remote Script — generated reproducibly by scripts/vendor-remote-script.mjs
-vendor/
+# Note: dist/ (the bundled server) and vendor/AbletonOSC (the pinned Remote
+# Script) are COMMITTED — the Claude plugin ships them and runs them directly
+# (no npm install / build at plugin-install time). Regenerate with:
+#   npm run package   (vendor + typecheck + build)
 
 # Project
 .env

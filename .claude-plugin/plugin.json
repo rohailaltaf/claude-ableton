@@ -1,0 +1,20 @@
+{
+  "name": "claude-ableton",
+  "version": "0.1.0",
+  "description": "Drive Ableton Live 12 from Claude — create tracks, load instruments/drums/samples, write MIDI clips and chord progressions, mix, sidechain, automate, and master, all via AbletonOSC.",
+  "author": {
+    "name": "Rohail Altaf"
+  },
+  "homepage": "https://github.com/rohailaltaf/claude-ableton",
+  "license": "MIT",
+  "keywords": [
+    "ableton",
+    "ableton-live",
+    "music",
+    "music-production",
+    "daw",
+    "mcp",
+    "osc"
+  ],
+  "mcpServers": "./.mcp.json"
+}
