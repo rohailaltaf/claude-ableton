@@ -8,7 +8,10 @@ export const TIME_QUANTUM = 1e-6;
 
 /** Sleep after fire-and-forget mutations so Live applies them before we poll. */
 export const LIVE_TICK_MS = 150;
-export const LOAD_TIMEOUT_MS = 2000;
+// Generous: complex preset racks (.adg instrument racks) can take several
+// seconds to fully load, during which Live can't even answer the device-count
+// poll. The poll tolerates QueryTimeout and keeps waiting until this deadline.
+export const LOAD_TIMEOUT_MS = 10000;
 export const LOAD_POLL_MS = 100;
 /**
  * Drum kits are multisampled and can take many seconds to load (big packs like

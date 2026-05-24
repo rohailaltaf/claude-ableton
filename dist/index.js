@@ -24662,7 +24662,7 @@ import dgram from "node:dgram";
 var DEFAULT_HOST = "127.0.0.1";
 var DEFAULT_SEND_PORT = 11e3;
 var DEFAULT_RECV_PORT = 11001;
-var DEFAULT_TIMEOUT_MS = 500;
+var DEFAULT_TIMEOUT_MS = 1500;
 var i = (v) => ({ type: "i", value: Math.trunc(v) });
 var f = (v) => ({ type: "f", value: v });
 var BridgeUnreachable = class extends Error {
@@ -24902,7 +24902,7 @@ function voiceChordSmooth(components, octave, prevNotes) {
 var BEATS_PER_BAR = 4;
 var TIME_QUANTUM = 1e-6;
 var LIVE_TICK_MS = 150;
-var LOAD_TIMEOUT_MS = 2e3;
+var LOAD_TIMEOUT_MS = 1e4;
 var LOAD_POLL_MS = 100;
 var DRUM_KIT_LOAD_TIMEOUT_MS = 2e4;
 var INSTRUMENT_MAP = {
@@ -25023,7 +25023,12 @@ async function createClipImpl(trackIndex, clipSlot, lengthBars, notes, name) {
     note_count: noteList.length
   };
 }
-async function listBrowserNode(address, path2) {
+function applyFilter(children, filter) {
+  if (!filter) return children;
+  const needle = filter.toLowerCase();
+  return children.filter((c) => c.toLowerCase().includes(needle));
+}
+async function listBrowserNode(address, path2, filter) {
   const c = await getClient();
   const children = [];
   let offset = 0;
@@ -25035,8 +25040,25 @@ async function listBrowserNode(address, path2) {
     offset += page.length;
     if (page.length === 0 || offset >= total) break;
   }
-  return { path: path2, children };
+  return { path: path2, children: applyFilter(children, filter) };
 }
+async function waitForDeviceIncrease(c, trackIndex, before, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep(LOAD_POLL_MS);
+    try {
+      const count = await numDevices(c, trackIndex);
+      if (count > before) return count;
+    } catch (e) {
+      if (e instanceof QueryTimeout) continue;
+      throw e;
+    }
+  }
+  return null;
+}
+var FILTER_FIELD = {
+  filter: external_exports.string().optional().describe("optional case-insensitive substring filter on the returned names")
+};
 function flattenSteps(steps) {
   if (!steps.length) throw new Error("steps list is empty");
   const flat = [];
@@ -25104,13 +25126,8 @@ function registerTools(server) {
       }
       const devicesBefore = await numDevices(c, track_index);
       c.send("/live/track/load_instrument", i(track_index), browserName);
-      const deadline = Date.now() + LOAD_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await sleep(LOAD_POLL_MS);
-        if (await numDevices(c, track_index) > devicesBefore) {
-          return jsonResult({ instrument: key, device_index: devicesBefore });
-        }
-      }
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ instrument: key, device_index: devicesBefore });
       throw new Error(
         `Load timed out: ${JSON.stringify(instrument)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s.`
       );
@@ -25583,23 +25600,28 @@ function registerTools(server) {
     "list_presets",
     {
       description: "List child names in Live's instrument browser at the given path (app.browser.instruments). Empty path = top-level instruments; 'Wavetable/Synth Lead' = presets in that folder. Slash-separated.",
-      inputSchema: { path: external_exports.string().default("").describe("slash-separated path; '' for top-level") }
+      inputSchema: {
+        path: external_exports.string().default("").describe("slash-separated path; '' for top-level"),
+        ...FILTER_FIELD
+      }
     },
-    async ({ path: path2 }) => {
+    async ({ path: path2, filter }) => {
       const c = await getClient();
       const reply = await c.query("/live/browser/list_instrument_presets", [path2]);
-      return jsonResult({ path: asStr(reply[0]), children: reply.slice(1).map(asStr) });
+      return jsonResult({ path: asStr(reply[0]), children: applyFilter(reply.slice(1).map(asStr), filter) });
     }
   );
   server.registerTool(
     "list_drum_kits",
     {
       description: "List child names in Live's drum browser at the given path (app.browser.drums). Empty path = top-level drum categories; a category path = the kits inside it. Auto-paginates the fork's byte-capped reply (big packs have hundreds of kits).",
-      inputSchema: { path: external_exports.string().default("").describe("slash-separated path; '' for top-level") }
+      inputSchema: {
+        path: external_exports.string().default("").describe("slash-separated path; '' for top-level"),
+        ...FILTER_FIELD
+      }
     },
-    async ({ path: path2 }) => {
-      const result = await listBrowserNode("/live/browser/list_drum_kits", path2);
-      return jsonResult(result);
+    async ({ path: path2, filter }) => {
+      return jsonResult(await listBrowserNode("/live/browser/list_drum_kits", path2, filter));
     }
   );
   server.registerTool(
@@ -25637,25 +25659,20 @@ function registerTools(server) {
   server.registerTool(
     "load_preset",
     {
-      description: "Load a specific instrument preset onto a track by browser path (e.g. 'Wavetable/Synth Lead/Big Pluck'). Use list_presets to discover paths.",
+      description: "Load a specific instrument preset onto a track by browser path. The path MUST come from list_presets (the instruments browser, organized by instrument ENGINE) and start with that engine. Paths from list_sounds (organized by sound category) do NOT load here. Examples: \u2705 'Electric/Piano & Keys/E-Piano MKI Mellow', \u2705 'Wavetable/Synth Lead/Big Pluck'  \u274C 'Piano & Keys/E-Piano MKI Mellow' (a list_sounds path)  \u274C 'E-Piano MKI Mellow' (bare filename). Complex racks (.adg) can take several seconds; this waits until the device actually appears.",
       inputSchema: {
         track_index: external_exports.number().int(),
-        preset_path: external_exports.string().describe("slash-separated browser path to the preset")
+        preset_path: external_exports.string().describe("engine-prefixed list_presets path, e.g. 'Electric/Piano & Keys/...'")
       }
     },
     async ({ track_index, preset_path }) => {
       const c = await getClient();
       const devicesBefore = await numDevices(c, track_index);
       c.send("/live/track/load_instrument_preset", i(track_index), preset_path);
-      const deadline = Date.now() + LOAD_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await sleep(LOAD_POLL_MS);
-        if (await numDevices(c, track_index) > devicesBefore) {
-          return jsonResult({ track_index, preset_path, device_index: devicesBefore });
-        }
-      }
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ track_index, preset_path, device_index: devicesBefore });
       throw new Error(
-        `Load timed out: preset ${JSON.stringify(preset_path)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. The path may not exist or may not be loadable; try list_presets to verify.`
+        `Load timed out: preset ${JSON.stringify(preset_path)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. Check the path with list_presets (it must start with the instrument engine, e.g. 'Electric/...').`
       );
     }
   );
@@ -25872,12 +25889,12 @@ function registerTools(server) {
     "list_audio_effects",
     {
       description: "List child names in Live's audio-effects browser (app.browser.audio_effects). Empty path = top-level categories (Reverb, Delay, EQ Eight, Compressor); a path = presets in that folder.",
-      inputSchema: { path: external_exports.string().default("") }
+      inputSchema: { path: external_exports.string().default(""), ...FILTER_FIELD }
     },
-    async ({ path: path2 }) => {
+    async ({ path: path2, filter }) => {
       const c = await getClient();
       const reply = await c.query("/live/browser/list_audio_effects", [path2]);
-      return jsonResult({ path: asStr(reply[0]), children: reply.slice(1).map(asStr) });
+      return jsonResult({ path: asStr(reply[0]), children: applyFilter(reply.slice(1).map(asStr), filter) });
     }
   );
   server.registerTool(
@@ -25893,13 +25910,8 @@ function registerTools(server) {
       const c = await getClient();
       const devicesBefore = await numDevices(c, track_index);
       c.send("/live/track/load_audio_effect", i(track_index), effect_path);
-      const deadline = Date.now() + LOAD_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await sleep(LOAD_POLL_MS);
-        if (await numDevices(c, track_index) > devicesBefore) {
-          return jsonResult({ track_index, effect_path, device_index: devicesBefore });
-        }
-      }
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ track_index, effect_path, device_index: devicesBefore });
       throw new Error(
         `Load timed out: audio effect ${JSON.stringify(effect_path)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. The path may not exist or may not be loadable; try list_audio_effects to verify.`
       );
@@ -25909,12 +25921,12 @@ function registerTools(server) {
     "list_midi_effects",
     {
       description: "List child names in Live's MIDI-effects browser (app.browser.midi_effects). Empty path = top-level (Arpeggiator, Chord, Scale, Note Length, Random, etc.).",
-      inputSchema: { path: external_exports.string().default("") }
+      inputSchema: { path: external_exports.string().default(""), ...FILTER_FIELD }
     },
-    async ({ path: path2 }) => {
+    async ({ path: path2, filter }) => {
       const c = await getClient();
       const reply = await c.query("/live/browser/list_midi_effects", [path2]);
-      return jsonResult({ path: asStr(reply[0]), children: reply.slice(1).map(asStr) });
+      return jsonResult({ path: asStr(reply[0]), children: applyFilter(reply.slice(1).map(asStr), filter) });
     }
   );
   server.registerTool(
@@ -25930,14 +25942,8 @@ function registerTools(server) {
       const c = await getClient();
       const devicesBefore = await numDevices(c, track_index);
       c.send("/live/track/load_midi_effect", i(track_index), effect_path);
-      const deadline = Date.now() + LOAD_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await sleep(LOAD_POLL_MS);
-        const count = await numDevices(c, track_index);
-        if (count > devicesBefore) {
-          return jsonResult({ track_index, effect_path, device_count: count });
-        }
-      }
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ track_index, effect_path, device_count: count });
       throw new Error(
         `Load timed out: MIDI effect ${JSON.stringify(effect_path)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. The path may not exist or may not be loadable; try list_midi_effects to verify.`
       );
@@ -25962,7 +25968,7 @@ function registerTools(server) {
     [
       "list_sounds",
       "/live/browser/list_sounds",
-      "List Live 12's Sounds browser (app.browser.sounds) \u2014 content organized by sound type."
+      "List Live 12's Sounds browser (app.browser.sounds) \u2014 content organized by sound category (Bass, Piano & Keys, \u2026). NOTE: these paths are for BROWSING only and are NOT loadable by load_preset. To load, find the same preset via list_presets (which is organized by instrument engine) and pass that engine-prefixed path to load_preset."
     ],
     [
       "list_browser_clips",
@@ -25985,9 +25991,9 @@ function registerTools(server) {
       name,
       {
         description: `${description} Slash-separated path; '' for top-level.`,
-        inputSchema: { path: external_exports.string().default("") }
+        inputSchema: { path: external_exports.string().default(""), ...FILTER_FIELD }
       },
-      async ({ path: path2 }) => jsonResult(await listBrowserNode(address, path2))
+      async ({ path: path2, filter }) => jsonResult(await listBrowserNode(address, path2, filter))
     );
   }
   server.registerTool(
@@ -26159,9 +26165,15 @@ function registerTools(server) {
       const deadline = Date.now() + LOAD_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await sleep(LOAD_POLL_MS);
-        const countReply = await c.query("/live/master_track/get/num_devices");
-        const count = asNum(countReply[0]);
-        if (count > before) return jsonResult({ effect_path, device_count: count });
+        try {
+          const countReply = await c.query("/live/master_track/get/num_devices");
+          if (asNum(countReply[0]) > before) {
+            return jsonResult({ effect_path, device_count: asNum(countReply[0]) });
+          }
+        } catch (e) {
+          if (e instanceof QueryTimeout) continue;
+          throw e;
+        }
       }
       throw new Error(
         `Load timed out: ${JSON.stringify(effect_path)} did not appear on the Main track within ${LOAD_TIMEOUT_MS / 1e3}s. Check the path with list_audio_effects.`

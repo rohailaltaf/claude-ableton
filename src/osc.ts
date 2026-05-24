@@ -19,7 +19,7 @@ import dgram from "node:dgram";
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_SEND_PORT = 11000;
 export const DEFAULT_RECV_PORT = 11001;
-export const DEFAULT_TIMEOUT_MS = 500;
+export const DEFAULT_TIMEOUT_MS = 1500;
 
 /** An explicitly-typed numeric OSC argument. */
 export type TypedArg = { type: "i" | "f"; value: number };
