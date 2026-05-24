@@ -2,23 +2,23 @@
 
 A local MCP server that lets Claude create tracks, load instruments, and write MIDI clips in Ableton Live 12.
 
-> **Status**: pre-release, no implementation yet. This doc captures the design decisions. User-facing install/usage lives in [README.md](README.md).
+> **Status**: implemented and shipping. Node/TypeScript MCP server, ~81 tools, distributed as a Claude plugin (Code + Desktop) and via `npx` for other MCP clients. This doc captures design decisions; install/usage lives in [README.md](README.md).
 
 ## Setup
 
 - **Host**: macOS, Ableton Live 12 Suite (Intro/Standard ship without several instruments in the allowlist).
-- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) because AbletonOSC doesn't ship handlers for some operations we need (notably device loading). The fork's `master` accumulates each handler we add (merged with `--no-ff`); each addition also lives on its own `feat/<name>` branch indefinitely so it can be PR'd upstream as a single coherent change whenever we choose.
-- **MCP transport**: stdio. Claude Desktop launches the server as a child process. No network port.
-- **Language**: Python. Same language as AbletonOSC, mature MCP SDK, `python-osc` for the bridge call.
+- **Bridge into Live**: [AbletonOSC](https://github.com/ideoforms/AbletonOSC) (Daniel Jones / ideoforms, MIT-licensed). A Remote Script that exposes the Live Object Model over OSC on localhost. We maintain a standalone [fork](https://github.com/rohailaltaf/AbletonOSC) that adds handlers AbletonOSC doesn't ship (device loading, browser nodes, master track, arrangement writing, quantize, drum-pad introspection, clip automation). A **pinned copy of the fork is bundled** into this package (`vendor/AbletonOSC`, generated reproducibly by `scripts/vendor-remote-script.mjs`); the server checks its version on every launch and (re)installs it into Live's User Library, never clobbering a developer's `.git` checkout. This guarantees the MCP server and Remote Script stay in lockstep with no drift window.
+- **MCP transport**: stdio. The MCP client (Claude Code, Claude Desktop, Cursor, …) launches the server as a child process. No network port.
+- **Language**: Node/TypeScript, bundled to a single self-contained `dist/index.js` (esbuild) so it runs with zero installs. OSC is hand-rolled over Node's `dgram` (explicit int32/float32 typing to match AbletonOSC's wire format); chord symbols are parsed with [`tonal`](https://github.com/tonaljs/tonal). (A Python prototype came first; the Node rewrite is the shipping version, verified at full parity.)
 
 ## Architecture
 
 ```
-Claude Desktop ──stdio──▶ MCP server ──OSC──▶ AbletonOSC ──LOM──▶ Ableton Live
-                          (this repo)         (in Live)
+MCP client ──stdio──▶ MCP server ──OSC──▶ AbletonOSC ──LOM──▶ Ableton Live
+(Claude/Cursor/…)     (this repo)         (in Live)
 ```
 
-Four processes, three transports. This repo is the second box — the only piece we author.
+Four processes, three transports. This repo is the second box — the only piece we author (plus the bundled Remote Script fork).
 
 The MCP server speaks OSC bidirectionally: it sends commands to `127.0.0.1:11000` and binds a UDP listener on `127.0.0.1:11001` to receive replies. Not pure fire-and-forget.
 
@@ -66,7 +66,7 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `re_enable_automation()` | shipped | Song-wide wrapper for `/live/song/re_enable_automation`. Rarely needed since the automate_* tools re-enable per-parameter, but useful as a "fix it" button after manual UI tweaks. |
 | `delete_track(track_index)` | shipped | Delete a track via `/live/song/delete_track`. Destructive, Undo-able in Live. |
 | `delete_device(track_index, device_index)` | shipped | Delete a device via `/live/track/delete_device`. Pairs with `load_instrument` for swap workflows. |
-| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?, voicing?)` | shipped | Higher-level helper. Parses chord symbols via pychord and delegates to `create_clip`. `voicing="smooth"` (default) applies voice-leading; `voicing="root"` keeps root position. Rhythm defaults to one-chord-per-bar if omitted. |
+| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?, voicing?)` | shipped | Higher-level helper. Parses chord symbols via `tonal` and delegates to `create_clip`. `voicing="smooth"` (default) applies voice-leading; `voicing="root"` keeps root position. Rhythm defaults to one-chord-per-bar if omitted. |
 
 ### Conventions
 
@@ -89,7 +89,7 @@ Each loads the default init patch. For named factory/user presets, use `load_pre
 
 ### Chord parsing
 
-`chord_progression` uses [`pychord`](https://github.com/yuma-m/pychord) for symbol parsing. Lighter than music21, covers the common cases (maj/min/7/maj7/m7/dim/aug, slash chords, extensions). Voicing defaults to `"smooth"`: the first chord is voiced close from the given octave, then each subsequent chord places every pitch class in the octave nearest the previous chord's centroid — common tones barely move and the progression stays in register. `"root"` preserves the original literal root-position behavior.
+`chord_progression` uses [`tonal`](https://github.com/tonaljs/tonal) for symbol parsing (`Chord.get` for components, `Note.chroma` for pitch classes) — covers the common cases (maj/min/7/maj7/m7/dim/aug, slash chords, extensions). The original Python prototype used `pychord`; the smooth voice-leading algorithm is a verbatim port (including Python's round-half-to-even) so voicings are identical. Voicing defaults to `"smooth"`: the first chord is voiced close from the given octave, then each subsequent chord places every pitch class in the octave nearest the previous chord's centroid — common tones barely move and the progression stays in register. `"root"` preserves the original literal root-position behavior.
 
 ### Out of scope for MVP
 
@@ -113,7 +113,7 @@ These were scoped as candidate capabilities and ruled out after confirming the L
 
 - **Live has no native API.** The only ways in are Remote Scripts (Python in Live) or Max for Live devices. AbletonOSC is the Remote Script — we do not reinvent it.
 - **Instruments load by URI, not by name.** Hardcode the map. Wrong URI = silent failure or wrong device.
-- **OSC is UDP.** No connection errors. The server pings `/live/test` lazily on the first tool call with a 500ms timeout and raises a clear error if Live isn't reachable. (Lazy rather than at-startup so Claude Desktop doesn't need Live running when it spawns the server — the user can start Live mid-session and the next tool call will succeed.)
+- **OSC is UDP.** No connection errors. The server pings `/live/test` lazily on the first tool call with a 500ms timeout and raises a clear error if Live isn't reachable. (Lazy rather than at-startup so the MCP client doesn't need Live running when it spawns the server — the user can start Live mid-session and the next tool call will succeed.)
 - **Localhost-only.** Bridge on `127.0.0.1:11000`/`11001`. Stdio MCP transport has no listening port. Nothing reachable off-machine.
 - **Live must be running** with AbletonOSC selected as the active Control Surface before any tool call works.
 
@@ -124,7 +124,7 @@ These were scoped as candidate capabilities and ruled out after confirming the L
 
 ## Related work
 
-Other Ableton MCP projects exist (e.g. Siddharth Ahuja's `ableton-mcp`). Audit before public release and either differentiate (AbletonOSC-based approach, scope, chord helper) or consider contributing upstream. Add a "Related work" section to README before going public.
+Other Ableton MCP projects exist (e.g. Siddharth Ahuja's `ableton-mcp`). This project differentiates on the AbletonOSC-based approach, breadth of scope (~81 tools), and the chord/voice-leading helper. The README credits prior art in its License & credits section.
 
 ## Design provenance
 
