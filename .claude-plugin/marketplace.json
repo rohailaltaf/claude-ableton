@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "claude-ableton",
-      "source": ".",
+      "source": "./",
       "description": "Drive Ableton Live 12 from Claude — tracks, instruments, drums, samples, MIDI clips, chord progressions, mixing, sidechain, automation, and mastering.",
       "homepage": "https://github.com/rohailaltaf/claude-ableton",
       "license": "MIT"
