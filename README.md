@@ -1,149 +1,185 @@
 # claude-ableton
 
-A local MCP server that lets [Claude](https://claude.ai) create tracks, load instruments, and write MIDI clips in Ableton Live 12.
+Make music in **Ableton Live 12** by talking to Claude. This is a local MCP
+server that lets Claude create tracks, load instruments / drum kits / samples,
+write MIDI clips and chord progressions, mix, route sidechains, automate
+parameters, build arrangements, and master — driving Live through
+[AbletonOSC](https://github.com/ideoforms/AbletonOSC).
 
-> **Pre-release**: no working implementation yet. See [DESIGN.md](DESIGN.md) for the architecture and scope. The install instructions below describe the intended v0.1 flow.
+```
+"Make a lo-fi beat at 82 BPM: Boom Bap drums, a warm Rhodes on
+ Cmaj7 → Am7 → Dm7 → G7 with smooth voicing, a sub bass sidechained
+ to the kick, and a tape-wobble auto-filter on the keys."
+```
 
-## Compatibility
+Everything materializes in your open Live set. ~81 tools, localhost-only, no
+cloud round-trip for your audio.
 
-- macOS
-- Ableton Live 12 **Suite** (Intro/Standard are missing several instruments in the allowlist)
-- Claude Desktop
+---
+
+## Requirements
+
+- **macOS** (Windows support is planned).
+- **Ableton Live 12** — Suite recommended (Intro/Standard ship fewer of the
+  built-in instruments in the allowlist).
+- A client that speaks MCP: **Claude Code**, **Claude Desktop**, or any other
+  MCP client (Cursor, Codex, …).
+- **Node 18+** *only* if you install via the `npx` path below. Claude Code and
+  Claude Desktop bundle their own Node, so the plugin install needs nothing
+  extra.
+
+---
 
 ## Install
 
-### 1. AbletonOSC (our fork)
+### Claude Code / Claude Desktop (plugin — recommended)
 
-This server talks to Live through [AbletonOSC](https://github.com/ideoforms/AbletonOSC), a Remote Script that exposes Live's Object Model over OSC. We use a [fork](https://github.com/rohailaltaf/AbletonOSC) that adds OSC handlers AbletonOSC doesn't ship with (e.g. `/live/track/load_instrument`). Each addition lives on its own feature branch so it can be PR'd upstream later — see [DESIGN.md](DESIGN.md).
+Add the marketplace, then install the plugin:
 
-```bash
-mkdir -p ~/Music/Ableton/User\ Library/Remote\ Scripts
-git clone https://github.com/rohailaltaf/AbletonOSC.git \
-  ~/Music/Ableton/User\ Library/Remote\ Scripts/AbletonOSC
+```
+/plugin marketplace add rohailaltaf/claude-ableton
+/plugin install claude-ableton@claude-ableton
 ```
 
-The fork's `master` accumulates each new handler we add. Individual `feat/<name>` branches live alongside it so each addition can be PR'd to upstream as a single coherent change.
+In **Claude Desktop** you can run the same `/plugin` commands, or add the
+marketplace and install the plugin from the Plugins section of Settings. The
+plugin bundles the MCP server and the AbletonOSC Remote Script, and
+**auto-updates** when you refresh the marketplace.
 
-Restart Live, then go to **Preferences → Link, Tempo & MIDI → Control Surface** and select **AbletonOSC**.
+### Cursor, Codex, or any other MCP client (npx)
 
-Smoke-test the bridge (TODO: ship `scripts/ping.py`):
-
-```bash
-python scripts/ping.py   # expects a reply from /live/test within 500ms
-```
-
-### 2. The MCP server
-
-This project uses [uv](https://github.com/astral-sh/uv) to manage Python and dependencies.
-
-```bash
-brew install uv                      # or: curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone https://github.com/rohailaltaf/claude-ableton.git
-cd claude-ableton
-uv sync                              # installs Python 3.12 and dependencies into .venv
-```
-
-### 3. Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, replacing the directory path with where you cloned the repo:
+Add this to your client's MCP config (no install, no clone — `npx` fetches and
+runs the latest from GitHub):
 
 ```json
 {
   "mcpServers": {
     "ableton": {
-      "command": "/opt/homebrew/bin/uv",
-      "args": ["run", "--directory", "/absolute/path/to/claude-ableton", "claude-ableton"]
+      "command": "npx",
+      "args": ["-y", "github:rohailaltaf/claude-ableton"]
     }
   }
 }
 ```
 
-Restart Claude Desktop.
+---
 
-> Once the package is published to PyPI, this will simplify to `"command": "uvx", "args": ["claude-ableton"]`.
+## One-time Ableton setup
 
-## Usage
+On its first launch the server installs the bundled AbletonOSC Remote Script
+into your Live User Library automatically. You then enable it once:
 
-With Live open and Claude Desktop running, try:
+1. Start (or restart) **Ableton Live**.
+2. Open **Settings/Preferences → Link, Tempo & MIDI**.
+3. Under **Control Surface**, select **AbletonOSC**. (Leave Input/Output set to
+   None.)
 
-> "Create a MIDI track, load Wavetable on it, and write a four-bar Cmaj7 → Am7 → Fmaj7 → G7 progression in quarter notes."
+<!-- TODO: add screenshot at docs/control-surface.png -->
 
-## Tools
+That's it. The server checks the Remote Script version on every launch and
+re-installs it if the plugin updated, so you stay in sync. (If you already keep
+your own git checkout of AbletonOSC in `Remote Scripts/AbletonOSC`, the
+installer leaves it untouched.)
 
-| Tool | Status | Purpose |
-|---|---|---|
-| `create_midi_track(name?)` | shipped | Add a MIDI track. |
-| `load_instrument(track_index, instrument)` | shipped | Load a built-in Live instrument from the allowlist (default init patch). |
-| `list_presets(path?)` | shipped | List child names in Live's instrument browser at a slash-separated path. |
-| `load_preset(track_index, preset_path)` | shipped | Load a specific preset by browser path (e.g. `Wavetable/Synth Lead/Big Pluck`). |
-| `list_drum_kits(path?)` | shipped | List child names in Live's drum browser at a slash-separated path. |
-| `load_drum_kit(track_index, kit_path)` | shipped | Load a complete drum kit (Drum Rack with mapped samples) by browser path. |
-| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a MIDI clip and write notes (Session view). |
-| `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip. |
-| `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip. |
-| `delete_clip(track_index, clip_slot)` | shipped | Delete a clip from a slot (destructive, Undo-able). |
-| `fire_scene(scene_index)` | shipped | Fire all clips in a scene (row), locking multiple tracks to the same downbeat. |
-| `list_scenes()` | shipped | List every scene (row) with index, name, and whether it's empty. |
-| `create_scene(index?, name?)` | shipped | Create a new empty scene (appends by default, or insert at an index). |
-| `duplicate_scene(scene_index)` | shipped | Duplicate a scene (and its clips) directly below it — fast section variations. |
-| `rename_scene(scene_index, name)` | shipped | Rename a scene (row). |
-| `delete_scene(scene_index)` | shipped | Delete a scene (row). Destructive, Undo-able. |
-| `set_tempo(bpm)` | shipped | Set the project tempo (20-999 BPM). |
-| `list_tracks()` | shipped | List every track with index, name, MIDI/audio, device count. |
-| `list_clips(track_index)` | shipped | List clip slots on a track with occupancy, name, length. |
-| `get_track_devices(track_index)` | shipped | List devices on a track with index, name, type, class name. |
-| `set_track_volume(track_index, volume)` | shipped | Set track volume (0.0–1.0; ~0.85 = 0 dB). |
-| `set_track_pan(track_index, pan)` | shipped | Set track pan (-1.0 to 1.0). |
-| `set_track_mute(track_index, mute)` | shipped | Mute/unmute a track. |
-| `set_track_solo(track_index, solo)` | shipped | Solo/un-solo a track. |
-| `get_device_parameters(track_index, device_index)` | shipped | List a device's parameters with current value + range. |
-| `set_device_parameter(track_index, device_index, parameter_index, value)` | shipped | Set one device parameter by index. |
-| `list_audio_effects(path?)` | shipped | List child names in Live's audio-effects browser at a slash-separated path. |
-| `load_audio_effect(track_index, effect_path)` | shipped | Append an audio effect (reverb, delay, EQ, compressor, etc.) to a track's device chain. |
-| `list_midi_effects(path?)` | shipped | List child names in Live's MIDI-effects browser at a slash-separated path. |
-| `load_midi_effect(track_index, effect_path)` | shipped | Load a MIDI effect (Arpeggiator, Scale, Chord, Note Length, etc.) onto a MIDI track, ahead of the instrument. |
-| `start_playing()` | shipped | Start global playback. |
-| `stop_playing()` | shipped | Stop global playback. |
-| `continue_playing()` | shipped | Resume playback from the current position. |
-| `get_sidechain_sources(track_index, device_index)` | shipped | List sidechain source names available to a Compressor/Gate/Vocoder/etc. |
-| `get_sidechain_channels(track_index, device_index)` | shipped | List sidechain channel tap points (Pre FX / Post FX / Post Mixer). |
-| `set_sidechain_source(track_index, device_index, source)` | shipped | Set sidechain source by name (e.g. wire bass's Compressor to "Drums"). |
-| `set_sidechain_channel(track_index, device_index, channel)` | shipped | Set sidechain channel tap point. |
-| `list_return_tracks()` | shipped | List return tracks with index and name. |
-| `create_return_track()` | shipped | Create a new return track; returns the new index. |
-| `load_audio_effect_on_return(return_index, effect_path)` | shipped | Load an audio effect onto a return track (e.g. a Reverb on a shared bus). |
-| `set_send(track_index, send_index, value)` | shipped | Set a track's send level (0.0–1.0) to a return track. |
-| `get_sends(track_index)` | shipped | List a track's send levels to every return. |
-| `get_notes(track_index, clip_slot, ...range)` | shipped | Read notes from an existing clip, optionally filtered by pitch/time range. |
-| `add_notes_to_clip(track_index, clip_slot, notes)` | shipped | Add notes to an existing clip without removing what's there. |
-| `remove_notes(track_index, clip_slot, ...range)` | shipped | Remove notes from a clip in a pitch/time range (default = all). |
-| `list_samples(path?, offset?)` | shipped | Paginated list of child names in Live's sample browser. Reply includes `offset` and `total_count` for paging. |
-| `load_sample(track_index, sample_path)` | shipped | Load a sample onto a MIDI track (auto-wrapped in Simpler so it's playable via MIDI). |
-| `load_sample_to_drum_pad(track_index, device_index, pad_pitch, sample_path)` | shipped | Load a sample onto a specific Drum Rack pad — build custom kits sample-by-sample. |
-| `list_drum_pads(track_index, device_index)` | shipped | List a Drum Rack's populated pads with MIDI note + name (e.g. 36 → Bass Drum). |
-| `automate_device_parameter(track_index, clip_slot, device_index, parameter_index, steps)` | shipped | Write step automation on a device parameter into a clip's envelope. |
-| `automate_mixer_parameter(track_index, clip_slot, parameter, steps)` | shipped | Automate volume / panning / send_N on a clip's track. |
-| `clear_clip_envelopes(track_index, clip_slot)` | shipped | Remove all automation envelopes from a clip. |
-| `re_enable_automation()` | shipped | Equivalent to Live's "Re-Enable Automation" button — un-disables any parameters whose envelopes Live has currently bypassed. |
-| `delete_track(track_index)` | shipped | Delete a track (destructive, Undo-able). |
-| `delete_device(track_index, device_index)` | shipped | Delete a device from a track (e.g. to swap instruments). |
-| `chord_progression(track_index, clip_slot, chords, rhythm?, name?, velocity?, octave?, voicing?)` | shipped | Write a chord progression as block chords. `voicing="smooth"` (default) applies voice-leading so chords stay in register and common tones hold; `voicing="root"` keeps literal root position. |
+---
 
-See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, instrument allowlist).
+## How it works
 
-## Limitations (v0.1)
+```
+Claude (Code / Desktop / Cursor / …)
+   │  MCP (stdio)
+   ▼
+claude-ableton  ──OSC──▶  127.0.0.1:11000  AbletonOSC Remote Script  ──▶  Live's LOM
+                ◀──OSC──   127.0.0.1:11001
+```
 
-- **Clips are authored in Session view.** New clips and notes are written into the Session grid (Tab to view). To build a fixed, finite track you can stamp Session clips onto the **Arrangement timeline** with `duplicate_clip_to_arrangement` — that's the one supported path to a linear arrangement (you can't write notes straight to Arrangement).
-- **4/4 time assumed.** `length_bars` is multiplied by 4 to get beats; we don't read or set the project time signature.
-- **No time signature, no playback position.** Can fire clips and scenes, start/stop/continue the global transport, and set tempo. Can't yet change the project time signature or read the current playback position.
-- **MIDI tracks only.** Instruments, drum kits, samples (Simpler-wrapped), audio effects, MIDI effects, return tracks, sends, and sidechain routing are all supported on/around MIDI tracks. Empty audio tracks can be created, but see the API ceilings below.
-- **Instrument allowlist** covers the full top-level instrument set of Live 12 Suite (synths, samplers, racks, Drum Synths) — see [DESIGN.md](DESIGN.md). For named presets, use `load_preset` with a browser path. Intro/Standard editions ship fewer instruments.
-- **Live API ceilings.** Some things Live's scripting API simply doesn't expose, so they can't be built: grouping tracks, saving/loading/exporting the Set, dropping an audio file in as a clip (audio clips only come from recording — hence the Simpler workaround), freezing/flattening tracks, and clip **follow actions** (Live 12 removed `follow_action_*` from the Clip API). Automation is step-only (smooth ramps are approximated with many small steps). See [DESIGN.md](DESIGN.md) for details.
+The bridge is **localhost-only** — there is no network listener and nothing is
+reachable off your machine.
+
+---
+
+## What it can do (~81 tools)
+
+- **Tracks & instruments** — create/duplicate/delete MIDI tracks; load any
+  built-in Live 12 instrument (synths, samplers, racks, Drum Synths) or a named
+  preset by browser path.
+- **Clips & notes** — create MIDI clips, read/add/remove notes, rename, loop,
+  color, quantize, duplicate.
+- **Chord progressions** — parse chord symbols and write block chords with
+  **smooth voice-leading** (common tones held) or literal root position.
+- **Drums & samples** — load full drum kits, inspect Drum Rack pads, drop
+  samples onto pads, or load a sample onto a track (Simpler-wrapped).
+- **Browser** — list instruments, drums, audio/MIDI effects, samples, packs,
+  plugins, sounds, clips, Max for Live, user library, current project.
+- **Mixing** — volume, pan, mute, solo; device parameters; return tracks &
+  sends; sidechain source/channel routing.
+- **Mastering** — load effects on the Main track (Glue Compressor → Limiter),
+  read/set master device params and output level.
+- **Automation** — step envelopes for device and mixer parameters (volume / pan
+  / sends); smooth ramps via many small steps.
+- **Scenes & arrangement** — list/create/duplicate/rename/delete scenes; stamp
+  Session clips onto the Arrangement timeline to build a finite track.
+- **Transport & state** — play/stop/continue, fire scenes/clips, set/read
+  tempo, time signature, playback position.
+
+See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, the
+instrument allowlist) and design decisions.
+
+---
+
+## Limitations
+
+- **Session-view authoring.** Notes and clips are written into the Session grid;
+  to build a fixed track, stamp clips onto the Arrangement timeline with
+  `duplicate_clip_to_arrangement` (the only LOM path to a linear arrangement).
+- **4/4 assumed** when converting bars↔beats (you can still read the real time
+  signature).
+- **Step automation only.** Smooth curves are approximated with many small
+  steps — Live's API doesn't expose breakpoint curves.
+- **Live API ceilings** (not exposed by Live's scripting API, so not buildable):
+  grouping tracks, saving/loading/exporting the Set, importing an audio file as a
+  clip (hence the Simpler workaround), freezing/flattening, and clip follow
+  actions (removed from the Clip API in Live 12).
+
+---
 
 ## Security
 
-This server grants Claude write access to your active Ableton Live session. The bridge is localhost-only (no network port), but treat it as you would any local automation tool — review what Claude proposes before it runs if you have unsaved work.
+This server grants Claude write access to your **active Ableton Live session**.
+The OSC bridge is localhost-only (no network port), but treat it like any local
+automation tool: review what Claude proposes before running it if you have
+unsaved work. Use Live's Undo (Cmd+Z) freely.
 
-## License
+---
 
-[MIT](LICENSE).
+## Development
+
+```bash
+git clone https://github.com/rohailaltaf/claude-ableton.git
+cd claude-ableton
+npm install
+npm run package      # vendor the Remote Script + typecheck + bundle dist/index.js
+```
+
+- `npm run build` — bundle `src/` into a single `dist/index.js` (esbuild).
+- `npm run typecheck` — `tsc --noEmit`.
+- `npm run vendor` — re-vendor the pinned AbletonOSC fork into `vendor/`.
+- `node scripts/integration-test.mjs` — drive all 81 tools against a running
+  Live (needs OSC port 11001 free and a scratch set open).
+
+The server is bundled into one self-contained file with no runtime
+dependencies, so the committed `dist/index.js` and `vendor/AbletonOSC` run
+directly under the plugin.
+
+---
+
+## License & credits
+
+[MIT](LICENSE) © Rohail Altaf.
+
+Built on [**AbletonOSC**](https://github.com/ideoforms/AbletonOSC) by Daniel
+Jones / ideoforms (MIT) — a (lightly extended) fork is bundled here; its license
+and attribution are preserved in `vendor/AbletonOSC/LICENSE.md`.
+
+Prior art and inspiration: Siddharth Ahuja's
+[`ableton-mcp`](https://github.com/ahujasid/ableton-mcp).
