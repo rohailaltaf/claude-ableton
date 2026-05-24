@@ -1,6 +1,6 @@
 {
   "name": "claude-ableton",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server letting Claude drive Ableton Live 12 via AbletonOSC",
   "license": "MIT",
   "author": "Rohail Altaf",
