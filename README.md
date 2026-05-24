@@ -19,9 +19,9 @@ cloud round-trip for your audio.
 
 ## Requirements
 
-- **macOS** (Windows support is planned).
-- **Ableton Live 12** — Suite recommended (Intro/Standard ship fewer of the
-  built-in instruments in the allowlist).
+- **macOS** — Windows support is planned.
+- **Ableton Live 12** — Suite recommended; Intro/Standard ship fewer built-in
+  instruments.
 - A client that speaks MCP: **Claude Code**, **Claude Desktop**, or any other
   MCP client (Cursor, Codex, …).
 - **Node 18+** *only* if you install via the `npx` path below. Claude Code and
@@ -32,31 +32,29 @@ cloud round-trip for your audio.
 
 ## Install
 
-The plugin bundles the MCP server **and** the AbletonOSC Remote Script, and
-**auto-updates** when the marketplace refreshes.
+The **plugin** is the simplest path for Claude Code and Claude Desktop — it
+bundles the MCP server and the AbletonOSC Remote Script and auto-updates with the
+marketplace. Other MCP clients use the `npx` config below.
 
-### Claude Code (plugin — recommended)
+### Claude Code
 
-Run the slash commands to add the marketplace, then install:
+Add the marketplace, then install:
 
 ```
 /plugin marketplace add rohailaltaf/claude-ableton
 /plugin install claude-ableton@claude-ableton
 ```
 
-### Claude Desktop (plugin — recommended)
+### Claude Desktop
 
 Use Claude Desktop's **Add marketplace** feature (in its plugin settings), add
-`rohailaltaf/claude-ableton`, then install the **claude-ableton** plugin from it.
-(The `/plugin` slash commands are Claude Code-only — Desktop uses the marketplace
-UI instead.)
+`rohailaltaf/claude-ableton`, then install the **claude-ableton** plugin.
 
 ![Adding the claude-ableton marketplace in Claude Desktop](docs/install-desktop.gif)
 
-### Cursor, Codex, or any other MCP client (npx)
+### Cursor, Codex, or any other MCP client
 
-Add this to your client's MCP config (no install, no clone — `npx` fetches and
-runs the latest from GitHub):
+Add this to your client's MCP config:
 
 ```json
 {
@@ -81,12 +79,8 @@ into your Live User Library automatically. You then enable it once:
 3. Under **Control Surface**, select **AbletonOSC**. (Leave Input/Output set to
    None.)
 
-<!-- TODO: add screenshot at docs/control-surface.png -->
-
 That's it. The server checks the Remote Script version on every launch and
-re-installs it if the plugin updated, so you stay in sync. (If you already keep
-your own git checkout of AbletonOSC in `Remote Scripts/AbletonOSC`, the
-installer leaves it untouched.)
+re-installs it if the plugin updated, so you stay in sync.
 
 ---
 
@@ -185,5 +179,5 @@ directly under the plugin.
 [MIT](LICENSE) © Rohail Altaf.
 
 Built on [**AbletonOSC**](https://github.com/ideoforms/AbletonOSC) by Daniel
-Jones / ideoforms (MIT) — a (lightly extended) fork is bundled here; its license
-and attribution are preserved in `vendor/AbletonOSC/LICENSE.md`.
+Jones / ideoforms (MIT) — an extended fork is bundled here; its license and
+attribution are preserved in `vendor/AbletonOSC/LICENSE.md`.
