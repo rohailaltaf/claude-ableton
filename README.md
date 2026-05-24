@@ -3,8 +3,7 @@
 Make music in **Ableton Live 12** by talking to Claude. This is a local MCP
 server that lets Claude create tracks, load instruments / drum kits / samples,
 write MIDI clips and chord progressions, mix, route sidechains, automate
-parameters, build arrangements, and master — driving Live through
-[AbletonOSC](https://github.com/ideoforms/AbletonOSC).
+parameters, build arrangements, and master.
 
 ```
 "Make a lo-fi beat at 82 BPM: Boom Bap drums, a warm Rhodes on
@@ -12,8 +11,7 @@ parameters, build arrangements, and master — driving Live through
  to the kick, and a tape-wobble auto-filter on the keys."
 ```
 
-Everything materializes in your open Live set. ~81 tools, localhost-only, no
-cloud round-trip for your audio.
+Everything materializes in your open Live set. ~81 tools.
 
 ---
 
@@ -31,10 +29,6 @@ cloud round-trip for your audio.
 ---
 
 ## Install
-
-The **plugin** is the simplest path for Claude Code and Claude Desktop — it
-bundles the MCP server and the AbletonOSC Remote Script and auto-updates with the
-marketplace. Other MCP clients use the `npx` config below.
 
 ### Claude Code
 
