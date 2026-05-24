@@ -19,6 +19,13 @@ env/
 # OS
 .DS_Store
 
+# Node
+node_modules/
+*.tsbuildinfo
+
+# Vendored Remote Script — generated reproducibly by scripts/vendor-remote-script.mjs
+vendor/
+
 # Project
 .env
 .env.local
