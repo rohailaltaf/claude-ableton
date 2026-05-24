@@ -61,5 +61,4 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
   with an isolated `CLAUDE_CONFIG_DIR` so you don't touch the real config.
 
 ## Constraints
-- macOS-first. Localhost-only (OSC on 127.0.0.1:11000/11001). Repo stays **private**
-  until the owner flips it public — never do that unprompted.
+- macOS-first. Localhost-only (OSC on 127.0.0.1:11000/11001). The repo is **public**.
