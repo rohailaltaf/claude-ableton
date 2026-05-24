@@ -122,10 +122,6 @@ These were scoped as candidate capabilities and ruled out after confirming the L
 - **Rhythm pattern shape for `chord_progression`**: explicit `(start_beat, duration_beat)` tuples vs named patterns (`"whole"`, `"quarter"`, `"comping"`). Lean explicit tuples for v0.1, named patterns later.
 - **Voicing**: ~~root position only for v0.1. Voice-leading is a v0.2 question.~~ Resolved — `voicing="smooth"` (centroid-anchored voice-leading) is now the default; `voicing="root"` retained for the original behavior.
 
-## Related work
-
-Other Ableton MCP projects exist (e.g. Siddharth Ahuja's `ableton-mcp`). This project differentiates on the AbletonOSC-based approach, breadth of scope (~81 tools), and the chord/voice-leading helper. The README credits prior art in its License & credits section.
-
 ## Design provenance
 
 These decisions came out of a design conversation in claude.ai chat before this repo had any code. The non-obvious calls — using AbletonOSC instead of writing a custom Remote Script, choosing stdio over HTTP, scoping MVP to four tools — are explained in that conversation. If you change any of them, write down why.

@@ -180,6 +180,3 @@ directly under the plugin.
 Built on [**AbletonOSC**](https://github.com/ideoforms/AbletonOSC) by Daniel
 Jones / ideoforms (MIT) — a (lightly extended) fork is bundled here; its license
 and attribution are preserved in `vendor/AbletonOSC/LICENSE.md`.
-
-Prior art and inspiration: Siddharth Ahuja's
-[`ableton-mcp`](https://github.com/ahujasid/ableton-mcp).
