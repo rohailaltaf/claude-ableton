@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise ALL 81 tools
+ * Live integration test: spawn the built MCP server and exercise the 82 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -375,6 +375,40 @@ try {
     const r = await call("list_samples");
     assert(Array.isArray(r.children), "no children");
     assert(typeof r.total_count === "number", "no total_count");
+  });
+
+  // ---- load_sound (Sounds browser; self-contained track) ----
+  await step("load_sound", async () => {
+    let sp = null;
+    const top = (await call("list_sounds")).children;
+    const queue = top.map((p) => ({ p, d: 1 }));
+    while (queue.length && !sp) {
+      const { p, d } = queue.shift();
+      let kids;
+      try {
+        kids = (await call("list_sounds", { path: p })).children;
+      } catch {
+        continue;
+      }
+      if (kids.length === 0) {
+        sp = p;
+        break;
+      }
+      for (const k of kids) {
+        const full = `${p}/${k}`;
+        if (/\.(adv|adg)$/i.test(k)) {
+          sp = full;
+          break;
+        }
+        if (d < 3) queue.push({ p: full, d: d + 1 });
+      }
+    }
+    assert(sp, "no loadable sound found");
+    const idx = (await call("create_midi_track", { name: "ZZ Sound" })).track_index;
+    await call("load_sound", { track_index: idx, sound_path: sp });
+    const devs = await call("get_track_devices", { track_index: idx });
+    assert(devs.length >= 1, "no device after load_sound");
+    await call("delete_track", { track_index: idx });
   });
 
   // ---- drums + samples ----
