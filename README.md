@@ -13,6 +13,10 @@ automate parameters, build arrangements, and master — all by chatting.
 
 Everything materializes in your open Live set. 82 tools.
 
+![claude-ableton building a track in Ableton Live 12, sped up](docs/demo.gif)
+
+*A real session, sped way up — Claude building a track hands-free.*
+
 ---
 
 ## Requirements
