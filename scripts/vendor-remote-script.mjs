@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = "https://github.com/rohailaltaf/AbletonOSC.git";
 // Pinned to the fork's master at vendoring time. Bump deliberately.
-const PINNED_REF = "2b0cf251f8ff68cb57afad2b112b4be2dfe3f14b";
+const PINNED_REF = "55fbb7a0f8e6471207bfaee60f655845d2830356";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const vendorDir = path.join(ROOT, "vendor");

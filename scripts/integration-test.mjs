@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 82 tools
+ * Live integration test: spawn the built MCP server and exercise the 83 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -408,6 +408,55 @@ try {
     await call("load_sound", { track_index: idx, sound_path: sp });
     const devs = await call("get_track_devices", { track_index: idx });
     assert(devs.length >= 1, "no device after load_sound");
+    await call("delete_track", { track_index: idx });
+  });
+
+  // ---- load_browser_item (plugins/user_library/packs/max_for_live) ----
+  await step("load_browser_item", async () => {
+    const listTool = {
+      packs: "list_packs",
+      user_library: "list_user_library",
+      max_for_live: "list_max_for_live",
+      plugins: "list_plugins",
+    };
+    // find a loadable device item in any of these nodes (depth-bounded)
+    let hit = null;
+    for (const node of ["packs", "user_library", "max_for_live", "plugins"]) {
+      const lt = listTool[node];
+      const queue = (await call(lt)).children.map((p) => ({ p, d: 1 }));
+      let budget = 40;
+      while (queue.length && budget > 0 && !hit) {
+        const { p, d } = queue.shift();
+        budget--;
+        if (/\.(adg|adv|amxd)$/i.test(p.split("/").pop())) {
+          hit = { node, path: p };
+          break;
+        }
+        let kids;
+        try {
+          kids = (await call(lt, { path: p })).children;
+        } catch {
+          continue;
+        }
+        for (const k of kids) {
+          const full = `${p}/${k}`;
+          if (/\.(adg|adv|amxd)$/i.test(k)) {
+            hit = { node, path: full };
+            break;
+          }
+          if (d < 4) queue.push({ p: full, d: d + 1 });
+        }
+      }
+      if (hit) break;
+    }
+    if (!hit) {
+      console.log("      (no loadable plugin/pack/library/M4L item on this machine — skipped)");
+      return;
+    }
+    const idx = (await call("create_midi_track", { name: "ZZ Browser" })).track_index;
+    await call("load_browser_item", { track_index: idx, node: hit.node, path: hit.path });
+    const devs = await call("get_track_devices", { track_index: idx });
+    assert(devs.length >= 1, `no device after load_browser_item (${hit.node}: ${hit.path})`);
     await call("delete_track", { track_index: idx });
   });
 

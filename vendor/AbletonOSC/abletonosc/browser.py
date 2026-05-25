@@ -122,6 +122,48 @@ class BrowserHandler(AbletonOSCHandler):
             self.song.view.selected_track = track
             app.browser.load_item(node)
 
+        def load_browser_item(params: Tuple[Any]):
+            """Load a device-producing item from an arbitrary browser node onto
+            a track. Params: (track_id, node_name, path). node_name is an
+            attribute of app.browser (e.g. plugins, user_library, packs,
+            max_for_live). Closes the gap where these nodes can be listed but
+            had no loader."""
+            track_id = int(params[0])
+            node_name = str(params[1])
+            path = str(params[2])
+            if not path:
+                self.logger.warning("load_browser_item: empty path")
+                return
+
+            app = Live.Application.get_application()
+            try:
+                root = getattr(app.browser, node_name)
+            except (AttributeError, RuntimeError):
+                self.logger.warning(
+                    "load_browser_item: no browser node %r on this Live version"
+                    % node_name
+                )
+                return
+            node = _walk(root, path)
+            if node is None:
+                return
+            if not node.is_loadable:
+                self.logger.warning(
+                    "load_browser_item: path %r is not loadable" % path
+                )
+                return
+
+            try:
+                track = self.song.tracks[track_id]
+            except IndexError:
+                self.logger.warning(
+                    "load_browser_item: track %d does not exist" % track_id
+                )
+                return
+
+            self.song.view.selected_track = track
+            app.browser.load_item(node)
+
         def list_drum_kits(params: Tuple[Any]):
             # Params: (path) or (path, offset). Offset paginates when a folder
             # has more kits than fit in one OSC packet — big packs like Drum
@@ -370,6 +412,9 @@ class BrowserHandler(AbletonOSCHandler):
         )
         self.osc_server.add_handler(
             "/live/track/load_sound", load_sound
+        )
+        self.osc_server.add_handler(
+            "/live/track/load_browser_item", load_browser_item
         )
         def load_sample_to_drum_pad(params: Tuple[Any]):
             """Load a sample into a specific Drum Rack pad on a track.

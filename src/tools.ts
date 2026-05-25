@@ -1003,6 +1003,40 @@ export function registerTools(server: McpServer): void {
     },
   );
 
+  server.registerTool(
+    "load_browser_item",
+    {
+      description:
+        "Load a device from a browser node that has no dedicated loader: third-party " +
+        "**plugins** (VST/VST3/AU), your **user_library** (saved racks/presets/instruments), " +
+        "**packs** content, or **max_for_live** devices. Pair it with the matching list_* " +
+        "tool: e.g. list_plugins → load_browser_item(node='plugins', path=...). The item " +
+        "loads onto the track as a device. (For instruments/sounds/drums/audio & MIDI " +
+        "effects/samples, use the dedicated load_* tools instead.) Complex items can take " +
+        "several seconds; this waits until the device appears.",
+      inputSchema: {
+        track_index: z.number().int(),
+        node: z
+          .enum(["plugins", "user_library", "packs", "max_for_live"])
+          .describe("which browser node the path is from (matches the list_* tool)"),
+        path: z.string().describe("slash-separated path from the matching list_* tool"),
+      },
+    },
+    async ({ track_index, node, path }) => {
+      const c = await getClient();
+      const devicesBefore = await numDevices(c, track_index);
+      c.send("/live/track/load_browser_item", i(track_index), node, path);
+
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ track_index, node, path, device_index: devicesBefore });
+      throw new Error(
+        `Load timed out: ${node} item ${JSON.stringify(path)} did not appear on track ` +
+          `${track_index} within ${LOAD_TIMEOUT_MS / 1000}s. Verify the path with list_${node} ` +
+          "(and note this loads device items — browser clips aren't supported here).",
+      );
+    },
+  );
+
   // ===== Delete track / device =====
 
   server.registerTool(
