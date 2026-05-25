@@ -946,13 +946,12 @@ export function registerTools(server: McpServer): void {
     "load_preset",
     {
       description:
-        "Load a specific instrument preset onto a track by browser path. The path MUST " +
-        "come from list_presets (the instruments browser, organized by instrument ENGINE) " +
-        "and start with that engine. Paths from list_sounds (organized by sound category) " +
-        "do NOT load here. Examples: ✅ 'Electric/Piano & Keys/E-Piano MKI Mellow', " +
-        "✅ 'Wavetable/Synth Lead/Big Pluck'  ❌ 'Piano & Keys/E-Piano MKI Mellow' " +
-        "(a list_sounds path)  ❌ 'E-Piano MKI Mellow' (bare filename). Complex racks " +
-        "(.adg) can take several seconds; this waits until the device actually appears.",
+        "Load an instrument preset onto a track by a list_presets path (the instruments " +
+        "browser, organized by instrument ENGINE). The path must start with the engine. " +
+        "✅ 'Electric/Piano & Keys/E-Piano MKI Mellow', ✅ 'Wavetable/Synth Lead/Big Pluck'. " +
+        "For paths from list_sounds (organized by sound category, e.g. 'Piano & Keys/...'), " +
+        "use load_sound instead. Complex racks (.adg) can take several seconds; this waits " +
+        "until the device actually appears.",
       inputSchema: {
         track_index: z.number().int(),
         preset_path: z
@@ -969,8 +968,37 @@ export function registerTools(server: McpServer): void {
       if (count !== null) return jsonResult({ track_index, preset_path, device_index: devicesBefore });
       throw new Error(
         `Load timed out: preset ${JSON.stringify(preset_path)} did not appear on track ` +
-          `${track_index} within ${LOAD_TIMEOUT_MS / 1000}s. Check the path with list_presets ` +
-          "(it must start with the instrument engine, e.g. 'Electric/...').",
+          `${track_index} within ${LOAD_TIMEOUT_MS / 1000}s. The path must come from ` +
+          "list_presets and start with the instrument engine (e.g. 'Electric/...'). If it's " +
+          "a list_sounds path (by sound category), use load_sound instead.",
+      );
+    },
+  );
+
+  server.registerTool(
+    "load_sound",
+    {
+      description:
+        "Load a preset from Live's Sounds browser onto a track — the cross-device view " +
+        "organized by sound category. Pass a path from list_sounds, e.g. " +
+        "'Piano & Keys/E-Piano MKI Mellow' or 'Bass/Sub Bass'. (This is the loader for " +
+        "list_sounds paths; use load_preset for engine-prefixed list_presets paths.) " +
+        "Complex racks (.adg) can take several seconds; this waits until the device appears.",
+      inputSchema: {
+        track_index: z.number().int(),
+        sound_path: z.string().describe("a list_sounds path, e.g. 'Piano & Keys/...'"),
+      },
+    },
+    async ({ track_index, sound_path }) => {
+      const c = await getClient();
+      const devicesBefore = await numDevices(c, track_index);
+      c.send("/live/track/load_sound", i(track_index), sound_path);
+
+      const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
+      if (count !== null) return jsonResult({ track_index, sound_path, device_index: devicesBefore });
+      throw new Error(
+        `Load timed out: sound ${JSON.stringify(sound_path)} did not appear on track ` +
+          `${track_index} within ${LOAD_TIMEOUT_MS / 1000}s. Verify the path with list_sounds.`,
       );
     },
   );
@@ -1332,9 +1360,8 @@ export function registerTools(server: McpServer): void {
       "list_sounds",
       "/live/browser/list_sounds",
       "List Live 12's Sounds browser (app.browser.sounds) — content organized by sound " +
-        "category (Bass, Piano & Keys, …). NOTE: these paths are for BROWSING only and are " +
-        "NOT loadable by load_preset. To load, find the same preset via list_presets (which " +
-        "is organized by instrument engine) and pass that engine-prefixed path to load_preset.",
+        "category (Bass, Piano & Keys, …). Load any of these paths with load_sound " +
+        "(the paired loader for this browser).",
     ],
     [
       "list_browser_clips",

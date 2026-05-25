@@ -85,6 +85,43 @@ class BrowserHandler(AbletonOSCHandler):
             self.song.view.selected_track = track
             app.browser.load_item(node)
 
+        def load_sound(params: Tuple[Any]):
+            """Load a preset from the Sounds browser (app.browser.sounds), the
+            cross-device view organized by sound category (Bass, Keys, ...).
+            Pairs with list_sounds. Loads onto the given track."""
+            track_id = int(params[0])
+            path = str(params[1])
+            if not path:
+                self.logger.warning("load_sound: empty path")
+                return
+
+            # Forgiving: list_sounds paths are relative to app.browser.sounds,
+            # but agents sometimes prefix the node name — strip a leading
+            # "Sounds/" if present.
+            if path.lower().startswith("sounds/"):
+                path = path[len("sounds/"):]
+
+            app = Live.Application.get_application()
+            node = _walk(app.browser.sounds, path)
+            if node is None:
+                return
+            if not node.is_loadable:
+                self.logger.warning(
+                    "load_sound: path %r is not loadable" % path
+                )
+                return
+
+            try:
+                track = self.song.tracks[track_id]
+            except IndexError:
+                self.logger.warning(
+                    "load_sound: track %d does not exist" % track_id
+                )
+                return
+
+            self.song.view.selected_track = track
+            app.browser.load_item(node)
+
         def list_drum_kits(params: Tuple[Any]):
             # Params: (path) or (path, offset). Offset paginates when a folder
             # has more kits than fit in one OSC packet — big packs like Drum
@@ -330,6 +367,9 @@ class BrowserHandler(AbletonOSCHandler):
         )
         self.osc_server.add_handler(
             "/live/track/load_instrument_preset", load_instrument_preset
+        )
+        self.osc_server.add_handler(
+            "/live/track/load_sound", load_sound
         )
         def load_sample_to_drum_pad(params: Tuple[Any]):
             """Load a sample into a specific Drum Rack pad on a track.
