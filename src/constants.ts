@@ -1,6 +1,7 @@
 /** Shared constants ported 1:1 from the Python server (the behavioral spec). */
 
-/** MVP assumes 4/4 time. */
+/** Fallback default (4/4). Tools that care about meter read the live sig at
+ * call time and compute beats/bar = numerator × 4 / denominator. */
 export const BEATS_PER_BAR = 4;
 
 /** Round note times to avoid LOM denormal issues. */

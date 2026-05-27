@@ -24899,7 +24899,6 @@ function voiceChordSmooth(components, octave, prevNotes) {
 }
 
 // src/constants.ts
-var BEATS_PER_BAR = 4;
 var TIME_QUANTUM = 1e-6;
 var LIVE_TICK_MS = 150;
 var LOAD_TIMEOUT_MS = 1e4;
@@ -24984,9 +24983,9 @@ function validateNote(note, index) {
     throw new Error(`note[${index}]: duration_beat ${duration_beat} must be > 0`);
   }
 }
-async function createClipImpl(trackIndex, clipSlot, lengthBars, notes, name) {
-  if (lengthBars <= 0) {
-    throw new Error(`length_bars must be > 0 (got ${lengthBars})`);
+async function createClipImpl(trackIndex, clipSlot, lengthBeats, notes, name) {
+  if (lengthBeats <= 0) {
+    throw new Error(`length_beats must be > 0 (got ${lengthBeats})`);
   }
   const noteList = notes ?? [];
   noteList.forEach((n, idx) => validateNote(n, idx));
@@ -24997,7 +24996,6 @@ async function createClipImpl(trackIndex, clipSlot, lengthBars, notes, name) {
       `clip_slot (${trackIndex}, ${clipSlot}) already contains a clip. Delete it first or pick another slot.`
     );
   }
-  const lengthBeats = lengthBars * BEATS_PER_BAR;
   c.send("/live/clip_slot/create_clip", i(trackIndex), i(clipSlot), f(lengthBeats));
   await sleep(LIVE_TICK_MS);
   if (name) c.send("/live/clip/set/name", i(trackIndex), i(clipSlot), name);
@@ -25059,6 +25057,24 @@ async function waitForDeviceIncrease(c, trackIndex, before, timeoutMs) {
 var FILTER_FIELD = {
   filter: external_exports.string().optional().describe("optional case-insensitive substring filter on the returned names")
 };
+async function beatsPerBar(c) {
+  const num = asNum((await c.query("/live/song/get/signature_numerator"))[0]);
+  const den = asNum((await c.query("/live/song/get/signature_denominator"))[0]);
+  return num * 4 / den;
+}
+function isPow2(n) {
+  return n > 0 && (n & n - 1) === 0;
+}
+function validateSig(numerator, denominator) {
+  if (!Number.isInteger(numerator) || numerator < 1 || numerator > 99) {
+    throw new Error(`numerator ${numerator} must be an integer 1-99`);
+  }
+  if (!Number.isInteger(denominator) || !isPow2(denominator) || denominator > 64) {
+    throw new Error(
+      `denominator ${denominator} must be a power of 2 from 1, 2, 4, 8, 16, 32, 64`
+    );
+  }
+}
 function flattenSteps(steps) {
   if (!steps.length) throw new Error("steps list is empty");
   const flat = [];
@@ -25136,7 +25152,7 @@ function registerTools(server) {
   server.registerTool(
     "create_clip",
     {
-      description: "Create a MIDI clip in the given clip slot and optionally write notes. Assumes 4/4 (4 beats per bar). Raises if the slot already has a clip. Each note: pitch 0-127 (60=C4), start_beat>=0, duration_beat>0, velocity 1-127.",
+      description: "Create a MIDI clip in the given clip slot and optionally write notes. The clip length is `length_bars` in the project's current time signature (bars\u2192beats uses the live sig: 4/4 \u2192 4 beats/bar, 3/4 \u2192 3, 6/8 \u2192 3, 7/8 \u2192 3.5, \u2026). Raises if the slot already has a clip. Each note: pitch 0-127 (60=C4), start_beat>=0, duration_beat>0, velocity 1-127.",
       inputSchema: {
         track_index: external_exports.number().int().describe("zero-based MIDI track index"),
         clip_slot: external_exports.number().int().describe("zero-based clip slot (scene) index"),
@@ -25146,10 +25162,13 @@ function registerTools(server) {
       }
     },
     async ({ track_index, clip_slot, length_bars, notes, name }) => {
+      if (length_bars <= 0) throw new Error(`length_bars must be > 0 (got ${length_bars})`);
+      const c = await getClient();
+      const bpb = await beatsPerBar(c);
       const result = await createClipImpl(
         track_index,
         clip_slot,
-        length_bars,
+        length_bars * bpb,
         notes ?? null,
         name ?? null
       );
@@ -25159,7 +25178,7 @@ function registerTools(server) {
   server.registerTool(
     "chord_progression",
     {
-      description: `Write a chord progression into a clip as block chords. Chord symbols are parsed (e.g. ["Cmaj7","Am7","Fmaj7","G7"]). By default each chord lasts one bar; pass rhythm to control timing. voicing 'smooth' (default) applies voice-leading so chords stay in a stable register and common tones barely move; 'root' keeps literal root position from octave.`,
+      description: `Write a chord progression into a clip as block chords. Chord symbols are parsed (e.g. ["Cmaj7","Am7","Fmaj7","G7"]). By default each chord lasts one bar in the project's current time signature (so a 3/4 progression gives 3-beat chords); pass rhythm to control timing explicitly. voicing 'smooth' (default) applies voice-leading so chords stay in a stable register and common tones barely move; 'root' keeps literal root position from octave.`,
       inputSchema: {
         track_index: external_exports.number().int().describe("target MIDI track index"),
         clip_slot: external_exports.number().int().describe("target clip slot (must be empty)"),
@@ -25176,9 +25195,11 @@ function registerTools(server) {
       if (!(velocity >= 1 && velocity <= 127)) {
         throw new Error(`velocity ${velocity} out of range 1-127`);
       }
+      const c = await getClient();
+      const bpb = await beatsPerBar(c);
       const rhythmSteps = rhythm ?? chords.map((_, idx) => ({
-        start_beat: idx * BEATS_PER_BAR,
-        duration_beat: BEATS_PER_BAR
+        start_beat: idx * bpb,
+        duration_beat: bpb
       }));
       if (chords.length !== rhythmSteps.length) {
         throw new Error(
@@ -25211,9 +25232,9 @@ function registerTools(server) {
         prevNotes = pitches;
         maxEnd = Math.max(maxEnd, start + duration3);
       }
-      const lengthBars = Math.max(1, Math.ceil(maxEnd / BEATS_PER_BAR));
+      const lengthBeats = Math.max(bpb, Math.ceil(maxEnd / bpb) * bpb);
       const clipName = name ?? chords.join(" | ");
-      const result = await createClipImpl(track_index, clip_slot, lengthBars, notes, clipName);
+      const result = await createClipImpl(track_index, clip_slot, lengthBeats, notes, clipName);
       return jsonResult(result);
     }
   );
@@ -25337,7 +25358,7 @@ function registerTools(server) {
   server.registerTool(
     "get_time_signature",
     {
-      description: "Read the project time signature (numerator/denominator). Most tools assume 4/4 when converting bars\u2194beats; this reports what Live actually has set.",
+      description: "Read the project time signature (numerator/denominator). create_clip and chord_progression honor this when converting bars\u2194beats.",
       inputSchema: {}
     },
     async () => {
@@ -25345,6 +25366,23 @@ function registerTools(server) {
       const num = await c.query("/live/song/get/signature_numerator");
       const den = await c.query("/live/song/get/signature_denominator");
       return jsonResult({ numerator: asNum(num[0]), denominator: asNum(den[0]) });
+    }
+  );
+  server.registerTool(
+    "set_time_signature",
+    {
+      description: "Set the project (song) time signature. Common sigs: 4/4, 3/4 (waltz), 6/8 (ballad), 7/8 / 5/4 (odd meters). Denominator must be a power of 2 (1, 2, 4, 8, 16, 32, 64). create_clip and chord_progression will honor this for bars\u2194beats. For a single clip in a different meter, use set_clip_time_signature.",
+      inputSchema: {
+        numerator: external_exports.number().int().describe("beats per bar, 1-99"),
+        denominator: external_exports.number().int().describe("beat unit, power of 2 (1-64)")
+      }
+    },
+    async ({ numerator, denominator }) => {
+      validateSig(numerator, denominator);
+      const c = await getClient();
+      c.send("/live/song/set/signature_numerator", i(numerator));
+      c.send("/live/song/set/signature_denominator", i(denominator));
+      return jsonResult({ numerator, denominator, action: "set" });
     }
   );
   server.registerTool(
@@ -25482,6 +25520,25 @@ function registerTools(server) {
       const c = await getClient();
       c.send("/live/clip/set/color", i(track_index), i(clip_slot), i(color));
       return jsonResult({ track_index, clip_slot, action: "color set" });
+    }
+  );
+  server.registerTool(
+    "set_clip_time_signature",
+    {
+      description: "Set a single clip's time signature (Live supports per-clip sigs alongside the song sig). Denominator must be a power of 2 (1, 2, 4, 8, 16, 32, 64). For the whole project, use set_time_signature instead.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a clip"),
+        numerator: external_exports.number().int().describe("beats per bar, 1-99"),
+        denominator: external_exports.number().int().describe("beat unit, power of 2 (1-64)")
+      }
+    },
+    async ({ track_index, clip_slot, numerator, denominator }) => {
+      validateSig(numerator, denominator);
+      const c = await getClient();
+      c.send("/live/clip/set/signature_numerator", i(track_index), i(clip_slot), i(numerator));
+      c.send("/live/clip/set/signature_denominator", i(track_index), i(clip_slot), i(denominator));
+      return jsonResult({ track_index, clip_slot, numerator, denominator, action: "set" });
     }
   );
   server.registerTool(

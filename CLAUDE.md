@@ -5,7 +5,7 @@ Ableton Live 12 via a bundled, pinned fork of AbletonOSC. It's distributed
 GitHub-natively: this one repo is **both the marketplace and the plugin**.
 
 ## Layout
-- `src/*.ts` — the server. `tools.ts` (all 83 MCP tools), `osc.ts` (hand-rolled
+- `src/*.ts` — the server. `tools.ts` (all 85 MCP tools), `osc.ts` (hand-rolled
   OSC over `dgram`), `chords.ts` (voice-leading), `installer.ts` (Option-B Remote
   Script installer), `index.ts` (entry), `server.ts`, `context.ts`, `constants.ts`.
 - `dist/index.js` — **committed** esbuild bundle (zero runtime deps). This is what
@@ -17,7 +17,7 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
   **version**.
 - `.claude-plugin/marketplace.json` — marketplace; the plugin's `source` is `"./"`.
 - `scripts/` — `build.mjs` (esbuild), `vendor-remote-script.mjs`,
-  `integration-test.mjs` (live 83-tool test), `list-tools.mjs`, `smoke-send.ts`.
+  `integration-test.mjs` (live 85-tool test), `list-tools.mjs`, `smoke-send.ts`.
 
 ## Release runbook — do this when asked to "do a release"
 1. Make changes under `src/`.
@@ -52,7 +52,7 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
   (removed at the owner's request).
 
 ## Testing against live Ableton
-- `node scripts/integration-test.mjs` drives all 83 tools (assertions + cleanup).
+- `node scripts/integration-test.mjs` drives all 85 tools (assertions + cleanup).
   Requires: **OSC port 11001 free** (only one server can bind it — stop any other
   running instance/plugin first), Live running with **AbletonOSC** selected as a
   Control Surface, and a scratch set open.

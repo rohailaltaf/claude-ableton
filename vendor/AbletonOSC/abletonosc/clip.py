@@ -108,6 +108,8 @@ class ClipHandler(AbletonOSCHandler):
             "pitch_fine",
             "position",
             "ram_mode",
+            "signature_denominator",
+            "signature_numerator",
             "start_marker",
             "velocity_amount",
             "warp_mode",

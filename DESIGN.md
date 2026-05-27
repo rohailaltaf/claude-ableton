@@ -34,7 +34,7 @@ Four tools. The first three are LOM-thin; the fourth is the LLM-friendly helper.
 | `load_preset(track_index, preset_path)` | shipped | Load any item under `app.browser.instruments` by path (e.g. `Wavetable/Synth Lead/Big Pluck`). Polls `num_devices` to confirm. Wraps `/live/track/load_instrument_preset`. |
 | `list_drum_kits(path?)` | shipped | Walks `app.browser.drums` by path. Wraps `/live/browser/list_drum_kits`. |
 | `load_drum_kit(track_index, kit_path)` | shipped | Load a Drum Rack kit by path under `app.browser.drums`. Returns a Drum Rack with pads mapped to standard MIDI notes. Wraps `/live/track/load_drum_kit`. |
-| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a Session-view MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision; assumes 4/4 time. |
+| `create_clip(track_index, clip_slot, length_bars, notes, name?)` | shipped | Create a Session-view MIDI clip and write notes. Validates pitch/velocity/timing per the conventions below; rejects on slot collision. `length_bars` honors the project's current time signature (beats/bar = numerator × 4 / denominator). |
 | `play_clip(track_index, clip_slot)` | shipped | Fire a Session view clip (`/live/clip_slot/fire`). Fire-and-forget. |
 | `stop_clip(track_index, clip_slot)` | shipped | Stop a Session view clip (`/live/clip/stop`). Fire-and-forget. |
 | `delete_clip(track_index, clip_slot)` | shipped | Delete a clip via `/live/clip_slot/delete_clip`. Pairs with `create_clip` for replace-in-place. |

@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 83 tools
+ * Live integration test: spawn the built MCP server and exercise the 85 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -91,6 +91,21 @@ try {
     await call("set_tempo", { bpm: 90 });
     const r = await call("get_tempo");
     assert(Math.abs(r.bpm - 90) < 0.5, `expected 90 got ${r.bpm}`);
+  });
+
+  // ---- time signature: set 3/4, create_clip honors it, restore ----
+  await step("set_time_signature + sig-aware create_clip + set_clip_time_signature", async () => {
+    const orig = await call("get_time_signature");
+    await call("set_time_signature", { numerator: 3, denominator: 4 });
+    const got = await call("get_time_signature");
+    assert(got.numerator === 3 && got.denominator === 4, `sig didn't set: ${JSON.stringify(got)}`);
+    const idx = (await call("create_midi_track", { name: "ZZ Sig" })).track_index;
+    const r = await call("create_clip", { track_index: idx, clip_slot: 0, length_bars: 2 });
+    assert(r.length_beats === 6, `expected 6 beats in 3/4, got ${r.length_beats}`);
+    // per-clip sig (no read-back tool; setting without error is the assertion)
+    await call("set_clip_time_signature", { track_index: idx, clip_slot: 0, numerator: 6, denominator: 8 });
+    await call("delete_track", { track_index: idx });
+    await call("set_time_signature", orig);
   });
 
   // ---- track + instrument ----
