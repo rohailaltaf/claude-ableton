@@ -215,6 +215,34 @@ async function beatsPerBar(c: AbletonClient): Promise<number> {
 function isPow2(n: number): boolean {
   return n > 0 && (n & (n - 1)) === 0;
 }
+
+/** Live.Song.Quantization enum — used for clip_trigger_quantization (global
+ * launch) AND per-clip launch_quantization. Keys lowercase for forgiving match. */
+const LAUNCH_QUANTIZATION: Record<string, number> = {
+  none: 0, "8 bars": 1, "4 bars": 2, "2 bars": 3, "1 bar": 4,
+  "1/2": 5, "1/2t": 6, "1/4": 7, "1/4t": 8, "1/8": 9, "1/8t": 10,
+  "1/16": 11, "1/16t": 12, "1/32": 13,
+};
+function resolveQuant(grid: string): number {
+  const v = LAUNCH_QUANTIZATION[grid.toLowerCase()];
+  if (v === undefined) {
+    throw new Error(
+      `unknown grid ${JSON.stringify(grid)}; choose one of: ${Object.keys(LAUNCH_QUANTIZATION).join(", ")}`,
+    );
+  }
+  return v;
+}
+
+/** Clip.launch_mode enum (Trigger=0, Gate=1, Toggle=2, Repeat=3). */
+const CLIP_LAUNCH_MODE: Record<string, number> = {
+  trigger: 0, gate: 1, toggle: 2, repeat: 3,
+};
+
+/** Clip.warp_mode enum: Beats=0, Tones=1, Texture=2, Re-Pitch=3, Complex=4, REX=5, Complex Pro=6. */
+const WARP_MODE: Record<string, number> = {
+  beats: 0, tones: 1, texture: 2, "re-pitch": 3, repitch: 3,
+  complex: 4, rex: 5, "complex pro": 6,
+};
 function validateSig(numerator: number, denominator: number): void {
   if (!Number.isInteger(numerator) || numerator < 1 || numerator > 99) {
     throw new Error(`numerator ${numerator} must be an integer 1-99`);
@@ -639,6 +667,120 @@ export function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "set_song_position",
+    {
+      description:
+        "Move the playhead to a specific position (beats from the start of the " +
+        "arrangement). Doesn't start/stop playback — pair with start_playing/continue_playing.",
+      inputSchema: { beat: z.number().describe("position in beats (>= 0)") },
+    },
+    async ({ beat }) => {
+      if (beat < 0) throw new Error(`beat ${beat} must be >= 0`);
+      const c = await getClient();
+      c.send("/live/song/set/current_song_time", f(beat));
+      return jsonResult({ beat, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_metronome",
+    {
+      description: "Turn Live's metronome on or off.",
+      inputSchema: { on: z.boolean() },
+    },
+    async ({ on }) => {
+      const c = await getClient();
+      c.send("/live/song/set/metronome", i(on ? 1 : 0));
+      return jsonResult({ on, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_arrangement_loop",
+    {
+      description:
+        "Configure the Arrangement loop region. Any of `start_beats`, `length_beats`, " +
+        "`enabled` may be set; omitted fields are left unchanged. Loop bounds are in beats.",
+      inputSchema: {
+        start_beats: z.number().optional().describe("loop start (beats from project start)"),
+        length_beats: z.number().optional().describe("loop length in beats (> 0)"),
+        enabled: z.boolean().optional().describe("loop on/off"),
+      },
+    },
+    async ({ start_beats, length_beats, enabled }) => {
+      const c = await getClient();
+      if (start_beats !== undefined) {
+        if (start_beats < 0) throw new Error(`start_beats ${start_beats} must be >= 0`);
+        c.send("/live/song/set/loop_start", f(start_beats));
+      }
+      if (length_beats !== undefined) {
+        if (length_beats <= 0) throw new Error(`length_beats ${length_beats} must be > 0`);
+        c.send("/live/song/set/loop_length", f(length_beats));
+      }
+      if (enabled !== undefined) c.send("/live/song/set/loop", i(enabled ? 1 : 0));
+      return jsonResult({ start_beats, length_beats, enabled, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_launch_quantization",
+    {
+      description:
+        "Set the global clip launch quantization (clip_trigger_quantization). Controls " +
+        "the grid scenes/clips snap to when fired. Choose from: none, 8 bars, 4 bars, " +
+        "2 bars, 1 bar, 1/2, 1/2T, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32 " +
+        "(T = triplet, case-insensitive).",
+      inputSchema: { grid: z.string().describe("e.g. '1 bar', '1/4', 'none'") },
+    },
+    async ({ grid }) => {
+      const c = await getClient();
+      c.send("/live/song/set/clip_trigger_quantization", i(resolveQuant(grid)));
+      return jsonResult({ grid, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "get_project_scale",
+    {
+      description:
+        "Read the project's scale (Live 12 global scale): root_note (pitch class 0-11, " +
+        "0=C…11=B) and scale_name (e.g. 'Major', 'Minor', 'Dorian', 'Mixolydian').",
+      inputSchema: {},
+    },
+    async () => {
+      const c = await getClient();
+      const r = asNum((await c.query("/live/song/get/root_note"))[0]);
+      const s = asStr((await c.query("/live/song/get/scale_name"))[0]);
+      return jsonResult({ root_note: r, scale_name: s });
+    },
+  );
+
+  server.registerTool(
+    "set_project_scale",
+    {
+      description:
+        "Set the project's scale (Live 12). root_note is the pitch class 0-11 " +
+        "(0=C, 1=C#/Db, 2=D, 3=D#/Eb, 4=E, 5=F, 6=F#/Gb, 7=G, 8=G#/Ab, 9=A, 10=A#/Bb, " +
+        "11=B). scale_name is one of Live's scale strings, e.g. 'Major', 'Minor', 'Dorian', " +
+        "'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian', 'Pentatonic', " +
+        "'Blues', 'Harmonic Minor', 'Melodic Minor'.",
+      inputSchema: {
+        root_note: z.number().int().describe("pitch class 0-11"),
+        scale_name: z.string().describe("e.g. 'Minor', 'Dorian', 'Mixolydian'"),
+      },
+    },
+    async ({ root_note, scale_name }) => {
+      if (!(root_note >= 0 && root_note <= 11)) {
+        throw new Error(`root_note ${root_note} out of range 0-11`);
+      }
+      const c = await getClient();
+      c.send("/live/song/set/root_note", i(root_note));
+      c.send("/live/song/set/scale_name", scale_name);
+      return jsonResult({ root_note, scale_name, action: "set" });
+    },
+  );
+
+  server.registerTool(
     "start_playing",
     {
       description:
@@ -799,6 +941,223 @@ export function registerTools(server: McpServer): void {
       c.send("/live/clip/set/signature_numerator", i(track_index), i(clip_slot), i(numerator));
       c.send("/live/clip/set/signature_denominator", i(track_index), i(clip_slot), i(denominator));
       return jsonResult({ track_index, clip_slot, numerator, denominator, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_gain",
+    {
+      description:
+        "Set a clip's gain (clip-level volume, normalized 0.0-1.0). Useful for audio " +
+        "clips; on MIDI clips this is a no-op in some versions.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        gain: z.number().describe("0.0-1.0"),
+      },
+    },
+    async ({ track_index, clip_slot, gain }) => {
+      if (!(gain >= 0 && gain <= 1)) throw new Error(`gain ${gain} out of range 0.0-1.0`);
+      const c = await getClient();
+      c.send("/live/clip/set/gain", i(track_index), i(clip_slot), f(gain));
+      return jsonResult({ track_index, clip_slot, gain, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_mute",
+    {
+      description: "Mute or unmute a single clip (Live calls this property 'muted').",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        muted: z.boolean(),
+      },
+    },
+    async ({ track_index, clip_slot, muted }) => {
+      const c = await getClient();
+      c.send("/live/clip/set/muted", i(track_index), i(clip_slot), i(muted ? 1 : 0));
+      return jsonResult({ track_index, clip_slot, muted, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_position",
+    {
+      description:
+        "Set a clip's position on the Arrangement timeline (beats from project start). " +
+        "Only meaningful for Arrangement clips, not Session-view clip slots.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        position_beats: z.number().describe("position in beats (>= 0)"),
+      },
+    },
+    async ({ track_index, clip_slot, position_beats }) => {
+      if (position_beats < 0) throw new Error(`position_beats ${position_beats} must be >= 0`);
+      const c = await getClient();
+      c.send("/live/clip/set/position", i(track_index), i(clip_slot), f(position_beats));
+      return jsonResult({ track_index, clip_slot, position_beats, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_region",
+    {
+      description:
+        "Set a clip's playback region (the start/end markers, in beats from clip 0). " +
+        "Either field is optional — omitted ones are left unchanged.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        start_marker: z.number().optional().describe("clip start marker (beats from clip 0)"),
+        end_marker: z.number().optional().describe("clip end marker (beats from clip 0)"),
+      },
+    },
+    async ({ track_index, clip_slot, start_marker, end_marker }) => {
+      const c = await getClient();
+      if (start_marker !== undefined) {
+        if (start_marker < 0) throw new Error(`start_marker ${start_marker} must be >= 0`);
+        c.send("/live/clip/set/start_marker", i(track_index), i(clip_slot), f(start_marker));
+      }
+      if (end_marker !== undefined) {
+        if (end_marker <= 0) throw new Error(`end_marker ${end_marker} must be > 0`);
+        c.send("/live/clip/set/end_marker", i(track_index), i(clip_slot), f(end_marker));
+      }
+      return jsonResult({ track_index, clip_slot, start_marker, end_marker, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_loop_region",
+    {
+      description:
+        "Set a clip's loop region (loop_start and loop_end, in beats from clip 0). " +
+        "Either field is optional. To toggle looping on/off use set_clip_loop.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        loop_start: z.number().optional(),
+        loop_end: z.number().optional(),
+      },
+    },
+    async ({ track_index, clip_slot, loop_start, loop_end }) => {
+      const c = await getClient();
+      if (loop_start !== undefined) {
+        if (loop_start < 0) throw new Error(`loop_start ${loop_start} must be >= 0`);
+        c.send("/live/clip/set/loop_start", i(track_index), i(clip_slot), f(loop_start));
+      }
+      if (loop_end !== undefined) {
+        if (loop_end <= 0) throw new Error(`loop_end ${loop_end} must be > 0`);
+        c.send("/live/clip/set/loop_end", i(track_index), i(clip_slot), f(loop_end));
+      }
+      return jsonResult({ track_index, clip_slot, loop_start, loop_end, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_pitch",
+    {
+      description:
+        "Set a clip's pitch shift — coarse (semitones, integer) and/or fine (cents, " +
+        "float). Useful for audio (Simpler/Sampler) and warped audio clips. Either field " +
+        "is optional.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        coarse_semitones: z.number().int().optional().describe("pitch in semitones"),
+        fine_cents: z.number().optional().describe("fine pitch in cents (-50..50)"),
+      },
+    },
+    async ({ track_index, clip_slot, coarse_semitones, fine_cents }) => {
+      const c = await getClient();
+      if (coarse_semitones !== undefined) {
+        c.send("/live/clip/set/pitch_coarse", i(track_index), i(clip_slot), i(coarse_semitones));
+      }
+      if (fine_cents !== undefined) {
+        c.send("/live/clip/set/pitch_fine", i(track_index), i(clip_slot), f(fine_cents));
+      }
+      return jsonResult({ track_index, clip_slot, coarse_semitones, fine_cents, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_warp",
+    {
+      description:
+        "Configure audio-clip warping. `warping` enables/disables warp; `warp_mode` picks " +
+        "the algorithm — one of: beats, tones, texture, re-pitch, complex, rex, " +
+        "complex pro (case-insensitive). Either field is optional. No-op on MIDI clips.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        warping: z.boolean().optional(),
+        warp_mode: z.string().optional().describe("beats|tones|texture|re-pitch|complex|rex|complex pro"),
+      },
+    },
+    async ({ track_index, clip_slot, warping, warp_mode }) => {
+      const c = await getClient();
+      if (warping !== undefined) {
+        c.send("/live/clip/set/warping", i(track_index), i(clip_slot), i(warping ? 1 : 0));
+      }
+      if (warp_mode !== undefined) {
+        const v = WARP_MODE[warp_mode.toLowerCase()];
+        if (v === undefined) {
+          throw new Error(
+            `unknown warp_mode ${JSON.stringify(warp_mode)}; choose: ${Object.keys(WARP_MODE).join(", ")}`,
+          );
+        }
+        c.send("/live/clip/set/warp_mode", i(track_index), i(clip_slot), i(v));
+      }
+      return jsonResult({ track_index, clip_slot, warping, warp_mode, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_launch_mode",
+    {
+      description:
+        "Set a clip's launch mode — how it responds to being fired: trigger (start), " +
+        "gate (play while held), toggle (toggle on/off), repeat (retrigger).",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        mode: z.string().describe("trigger | gate | toggle | repeat"),
+      },
+    },
+    async ({ track_index, clip_slot, mode }) => {
+      const v = CLIP_LAUNCH_MODE[mode.toLowerCase()];
+      if (v === undefined) {
+        throw new Error(
+          `unknown mode ${JSON.stringify(mode)}; choose: ${Object.keys(CLIP_LAUNCH_MODE).join(", ")}`,
+        );
+      }
+      const c = await getClient();
+      c.send("/live/clip/set/launch_mode", i(track_index), i(clip_slot), i(v));
+      return jsonResult({ track_index, clip_slot, mode, action: "set" });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_launch_quantization",
+    {
+      description:
+        "Set a single clip's launch quantization grid (overrides the global default for " +
+        "this clip). Same grid choices as set_launch_quantization: none, 8 bars, 4 bars, " +
+        "2 bars, 1 bar, 1/2, 1/2T, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int(),
+        grid: z.string(),
+      },
+    },
+    async ({ track_index, clip_slot, grid }) => {
+      const c = await getClient();
+      c.send(
+        "/live/clip/set/launch_quantization",
+        i(track_index), i(clip_slot), i(resolveQuant(grid)),
+      );
+      return jsonResult({ track_index, clip_slot, grid, action: "set" });
     },
   );
 
