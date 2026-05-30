@@ -164,6 +164,63 @@ class BrowserHandler(AbletonOSCHandler):
             self.song.view.selected_track = track
             app.browser.load_item(node)
 
+        def load_audio_clip(params: Tuple[Any]):
+            """Create an audio clip in a Session slot from an absolute file
+            path. Wraps `Live.ClipSlot.create_audio_clip`, which accepts the
+            path of an audio file (.wav/.aif/.aiff/.mp3/.flac/.ogg) and lands
+            it in the slot as a real audio clip — the only programmatic path
+            to put audio loops on the Session grid (Live's Clip API otherwise
+            can't materialise an audio clip from a file).
+
+            Params: (track_id, clip_slot_id, file_path).
+
+            Live rejects the call if:
+              * the path is not absolute → ValueError "Please provide an absolute path"
+              * the path doesn't resolve to a decodable audio file → ValueError
+                "The provided path does not appear to point to a valid audio file"
+              * the target track is not an audio track → RuntimeError
+                "Audio clips can only be created on audio tracks"
+              * the slot is already occupied → RuntimeError
+                "This clip slot already has a clip"
+
+            We let those propagate as warnings; the MCP layer translates the
+            slot-state preconditions into clean errors.
+            """
+            track_id = int(params[0])
+            clip_slot_id = int(params[1])
+            file_path = str(params[2])
+            if not file_path:
+                self.logger.warning("load_audio_clip: empty path")
+                return
+            try:
+                track = self.song.tracks[track_id]
+            except IndexError:
+                self.logger.warning(
+                    "load_audio_clip: track %d does not exist" % track_id
+                )
+                return
+            try:
+                slot = track.clip_slots[clip_slot_id]
+            except IndexError:
+                self.logger.warning(
+                    "load_audio_clip: clip slot %d does not exist on track %d"
+                    % (clip_slot_id, track_id)
+                )
+                return
+            try:
+                slot.create_audio_clip(file_path)
+            except (RuntimeError, ValueError) as e:
+                self.logger.warning(
+                    "load_audio_clip: %s: %s" % (type(e).__name__, e)
+                )
+
+        # NOTE on app.browser.load_item: verified inert for clip-type browser items
+        # (app.browser.clips). Five targeting strategies tried — highlighted_clip_slot,
+        # selected_track+selected_scene, plus focus_view("Session"), plus hotswap_target,
+        # plus schedule_message — all returned without filling the slot. load_item only
+        # works for device-producing items. For audio-file → clip use load_audio_clip
+        # (via ClipSlot.create_audio_clip) which is the supported LOM path.
+
         def list_drum_kits(params: Tuple[Any]):
             # Params: (path) or (path, offset). Offset paginates when a folder
             # has more kits than fit in one OSC packet — big packs like Drum
@@ -415,6 +472,9 @@ class BrowserHandler(AbletonOSCHandler):
         )
         self.osc_server.add_handler(
             "/live/track/load_browser_item", load_browser_item
+        )
+        self.osc_server.add_handler(
+            "/live/clip_slot/load_audio_clip", load_audio_clip
         )
         def load_sample_to_drum_pad(params: Tuple[Any]):
             """Load a sample into a specific Drum Rack pad on a track.

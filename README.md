@@ -11,7 +11,7 @@ automate parameters, build arrangements, and master — all by chatting.
  to the kick, and a tape-wobble auto-filter on the keys."
 ```
 
-Everything materializes in your open Live set. 101 tools.
+Everything materializes in your open Live set. 102 tools.
 
 ![claude-ableton building a track in Ableton Live 12, sped up](docs/demo.gif)
 
@@ -97,7 +97,7 @@ reachable off your machine.
 
 ---
 
-## What it can do (101 tools)
+## What it can do (102 tools)
 
 - **Tracks & instruments** — create/duplicate/delete MIDI tracks; load any
   built-in Live 12 instrument (synths, samplers, racks, Drum Synths) or a named
@@ -107,7 +107,8 @@ reachable off your machine.
 - **Chord progressions** — parse chord symbols and write block chords with
   **smooth voice-leading** (common tones held) or literal root position.
 - **Drums & samples** — load full drum kits, inspect Drum Rack pads, drop
-  samples onto pads, or load a sample onto a track (Simpler-wrapped).
+  samples onto pads, load a sample onto a track (Simpler-wrapped), or drop an
+  audio file straight onto the Session grid as a real audio clip.
 - **Browser** — list instruments, drums, audio/MIDI effects, samples, packs,
   plugins, sounds, clips, Max for Live, user library, current project — and load
   from them (presets, sounds, samples, plugins/VSTs, saved racks, pack content,
@@ -136,12 +137,12 @@ instrument allowlist) and design decisions.
 - **Step automation only.** Smooth curves are approximated with many small
   steps — Live's API doesn't expose breakpoint curves.
 - **Live API ceilings** (not exposed by Live's scripting API, so not buildable):
-  grouping tracks, saving/loading/exporting the Set, importing an audio file as a
-  clip (hence the Simpler workaround), loading browser clips (`.alc`) into a
-  Session slot programmatically — Live's `app.browser.load_item` silently no-ops
-  for clip-type browser items even with `highlighted_clip_slot` set —
+  grouping tracks, saving/loading/exporting the Set, loading browser clips
+  (`.alc` from Live's indexed Clips browser) into a Session slot — Live's
+  `app.browser.load_item` is device-only, no LOM path for clip-type items —
   freezing/flattening, and clip follow actions (removed from the Clip API in
-  Live 12).
+  Live 12). (Loading raw audio files **does** work — `load_audio_clip` lands
+  any `.wav`/`.aif`/`.mp3`/`.flac`/`.ogg` directly on the Session grid.)
 
 ---
 
@@ -166,7 +167,7 @@ npm run package      # vendor the Remote Script + typecheck + bundle dist/index.
 - `npm run build` — bundle `src/` into a single `dist/index.js` (esbuild).
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run vendor` — re-vendor the pinned AbletonOSC fork into `vendor/`.
-- `node scripts/integration-test.mjs` — drive all 101 tools against a running
+- `node scripts/integration-test.mjs` — drive all 102 tools against a running
   Live (needs OSC port 11001 free and a scratch set open).
 
 The plugin's server is bundled into one self-contained file with no runtime

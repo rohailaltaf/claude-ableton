@@ -26813,6 +26813,63 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "load_audio_clip",
+    {
+      description: "Drop an audio file directly into a Session clip slot as a real audio clip \u2014 wraps Live's `ClipSlot.create_audio_clip`. **This is the only programmatic way to land an audio loop on the Session grid** (Live's Clip API otherwise can't materialise audio clips from files; `load_sample` is the Simpler-wrapped fallback). Requirements: track must be an **audio track** (use `create_audio_track`), the slot must be **empty**, and `file_path` must be an **absolute filesystem path** to a decodable audio file (.wav/.aif/.aiff/.mp3/.flac/.ogg). `.alc` browser clips are XML wrappers and are NOT accepted directly \u2014 extract the audio reference first.",
+      inputSchema: {
+        track_index: external_exports.number().int().describe("zero-based audio track index"),
+        clip_slot: external_exports.number().int().describe("zero-based clip slot (scene) index; must be empty"),
+        file_path: external_exports.string().describe("absolute filesystem path to an audio file (must start with '/')")
+      }
+    },
+    async ({ track_index, clip_slot, file_path }) => {
+      if (!file_path.startsWith("/")) {
+        throw new Error(
+          `file_path must be an absolute path (got ${JSON.stringify(file_path)}). Live rejects relative paths.`
+        );
+      }
+      const c = await getClient();
+      const beforeR = await c.query("/live/clip_slot/get/has_clip", [
+        i(track_index),
+        i(clip_slot)
+      ]);
+      if (asBool(beforeR[2])) {
+        throw new Error(
+          `clip_slot (${track_index}, ${clip_slot}) already contains a clip. Delete it first or pick another slot.`
+        );
+      }
+      c.send("/live/clip_slot/load_audio_clip", i(track_index), i(clip_slot), file_path);
+      const deadline = Date.now() + LOAD_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await sleep(LOAD_POLL_MS);
+        try {
+          const r = await c.query("/live/clip_slot/get/has_clip", [
+            i(track_index),
+            i(clip_slot)
+          ]);
+          if (asBool(r[2])) {
+            const nameR = await c.query("/live/clip/get/name", [
+              i(track_index),
+              i(clip_slot)
+            ]);
+            return jsonResult({
+              track_index,
+              clip_slot,
+              file_path,
+              clip_name: asStr(nameR[2])
+            });
+          }
+        } catch (e) {
+          if (e instanceof QueryTimeout) continue;
+          throw e;
+        }
+      }
+      throw new Error(
+        `load_audio_clip timed out: clip did not appear at (track ${track_index}, slot ${clip_slot}) within ${LOAD_TIMEOUT_MS / 1e3}s. Common causes: track is not an audio track (use create_audio_track), file_path doesn't point to a decodable audio file, or the path is wrong. Check Live's AbletonOSC log for the underlying error.`
+      );
+    }
+  );
+  server.registerTool(
     "load_sample_to_drum_pad",
     {
       description: "Load a sample onto a specific pad of a Drum Rack (swap a single drum without touching the kit). The Drum Rack must already exist. pad_pitch is the MIDI note: 36=kick, 38=snare, 39=clap, 42=closed hat, 46=open hat, 49=crash, 51=ride.",

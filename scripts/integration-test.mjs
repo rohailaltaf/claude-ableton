@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 101 tools
+ * Live integration test: spawn the built MCP server and exercise the 102 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -518,6 +518,44 @@ try {
     const r = await call("create_audio_track", { name: "ZZ Audio" });
     assert(typeof r.track_index === "number", "no track_index");
     await call("delete_track", { track_index: r.track_index });
+  });
+
+  // ---- load_audio_clip (audio file → Session slot, the real one) ----
+  await step("load_audio_clip", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    // Find a known WAV under Live's Core Library.
+    const core = "/Applications/Ableton Live 12 Suite.app/Contents/App-Resources/Core Library/Samples";
+    let wav = null;
+    async function walk(dir, depth) {
+      if (wav || depth > 4) return;
+      let entries;
+      try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (wav) return;
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) await walk(full, depth + 1);
+        else if (e.isFile() && e.name.toLowerCase().endsWith(".wav")) { wav = full; return; }
+      }
+    }
+    await walk(core, 0);
+    if (!wav) {
+      console.log("      (no .wav under Core Library — skipped)");
+      return;
+    }
+    const idx = (await call("create_audio_track", { name: "ZZ AudioClip" })).track_index;
+    const r = await call("load_audio_clip", {
+      track_index: idx,
+      clip_slot: 0,
+      file_path: wav,
+    });
+    assert(typeof r.clip_name === "string" && r.clip_name.length > 0, "no clip_name returned");
+    const clips = await call("list_clips", { track_index: idx });
+    assert(
+      Array.isArray(clips) && clips.some((c) => c.clip_slot === 0 && c.has_clip),
+      `no clip at slot 0 after load_audio_clip (${wav})`,
+    );
+    await call("delete_track", { track_index: idx });
   });
 
   // ---- drums + samples ----
