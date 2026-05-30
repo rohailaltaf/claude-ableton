@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 100 tools
+ * Live integration test: spawn the built MCP server and exercise the 101 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -511,6 +511,13 @@ try {
     const devs = await call("get_track_devices", { track_index: idx });
     assert(devs.length >= 1, `no device after load_browser_item (${hit.node}: ${hit.path})`);
     await call("delete_track", { track_index: idx });
+  });
+
+  // ---- create_audio_track quick round-trip (create + delete) ----
+  await step("create_audio_track", async () => {
+    const r = await call("create_audio_track", { name: "ZZ Audio" });
+    assert(typeof r.track_index === "number", "no track_index");
+    await call("delete_track", { track_index: r.track_index });
   });
 
   // ---- drums + samples ----

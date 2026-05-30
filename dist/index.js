@@ -25164,6 +25164,22 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "create_audio_track",
+    {
+      description: "Create an audio track appended at the end of the track list. Use this when you need to land an audio clip on the Session grid (e.g. via load_browser_clip with an audio .alc loop). Returns the zero-based track_index of the new track.",
+      inputSchema: { name: external_exports.string().optional().describe("Optional name for the new track.") }
+    },
+    async ({ name }) => {
+      const c = await getClient();
+      const reply = await c.query("/live/song/get/num_tracks");
+      const newIndex = asNum(reply[0]);
+      c.send("/live/song/create_audio_track", i(-1));
+      await sleep(LIVE_TICK_MS);
+      if (name) c.send("/live/track/set/name", i(newIndex), name);
+      return jsonResult({ track_index: newIndex });
+    }
+  );
+  server.registerTool(
     "load_instrument",
     {
       description: "Load a built-in Live 12 Suite instrument onto a track. instrument is a case-insensitive identifier from the allowlist: synths/modeling (operator, wavetable, drift, meld, analog, electric, tension, collision); samplers (simpler, sampler, impulse, drum_sampler); racks/routing (drum_rack \u2014 empty, use load_drum_kit for a kit; instrument_rack, external_instrument); drum synths (ds_kick, ds_snare, ds_hh, ds_clap, ds_tom, ds_cymbal, ds_fm, ds_clang). For named presets use load_preset. Returns the loaded identifier + device_index.",
@@ -26095,7 +26111,7 @@ function registerTools(server) {
       const count = await waitForDeviceIncrease(c, track_index, devicesBefore, LOAD_TIMEOUT_MS);
       if (count !== null) return jsonResult({ track_index, node, path: path2, device_index: devicesBefore });
       throw new Error(
-        `Load timed out: ${node} item ${JSON.stringify(path2)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. Verify the path with list_${node} (and note this loads device items \u2014 browser clips aren't supported here).`
+        `Load timed out: ${node} item ${JSON.stringify(path2)} did not appear on track ${track_index} within ${LOAD_TIMEOUT_MS / 1e3}s. Verify the path with list_${node} (this loads device items; browser clips are a Live API ceiling \u2014 see DESIGN.md).`
       );
     }
   );

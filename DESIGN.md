@@ -2,7 +2,7 @@
 
 A local MCP server that lets Claude create tracks, load instruments, and write MIDI clips in Ableton Live 12.
 
-> **Status**: implemented and shipping. Node/TypeScript MCP server, ~100 tools, distributed as a Claude plugin (Code + Desktop) and via `npx` for other MCP clients. This doc captures design decisions; install/usage lives in [README.md](README.md).
+> **Status**: implemented and shipping. Node/TypeScript MCP server, ~101 tools, distributed as a Claude plugin (Code + Desktop) and via `npx` for other MCP clients. This doc captures design decisions; install/usage lives in [README.md](README.md).
 
 ## Setup
 
@@ -102,7 +102,8 @@ These were scoped as candidate capabilities and ruled out after confirming the L
 
 - **Track grouping.** `Track.group_track` / `Track.is_grouped` / `ClipSlot.is_group_slot` are read-only — they tell you *which* group a track is in, but there is no method to *create* or dissolve a group. Grouping is a UI-only operation (Cmd+G).
 - **Saving / loading / exporting Live Sets.** No `save` method exists on `Song` or `Application`. The LOM cannot save the set or open a different one.
-- **Audio clips from a file.** `Song.create_audio_track` can make an empty audio track, but there is no API to drop an audio file into a Session slot as an audio clip — audio clips only come from recording. This is exactly why samples are shipped Simpler-wrapped on MIDI tracks.
+- **Audio clips from a file.** `Song.create_audio_track` can make an empty audio track (exposed as `create_audio_track`), but there is no API to drop an audio file into a Session slot as an audio clip — audio clips only come from recording. This is exactly why samples are shipped Simpler-wrapped on MIDI tracks.
+- **Browser clips (`.alc`) into a Session slot.** Tried in v0.1.6 then rolled back. The path looked promising — walk `app.browser.clips`, set `song.view.highlighted_clip_slot`, call `app.browser.load_item(node)` — but Live silently no-ops for clip-type browser items (`is_loadable=True`, `load_item` returns, slot stays empty) on both MIDI and audio tracks. Drag-drop in the UI works; the LOM doesn't bridge it. Same root cause as the audio-file-as-clip ceiling above.
 - **Freeze / flatten tracks.** No LOM support of any kind.
 - **Clip follow actions.** Live 12 removed `follow_action_a/b/enabled/time` from the `Clip` object (probed: `'Clip' object has no attribute ...`), so auto-advancing clips/scenes can't be scripted. (To build a fixed track instead, use Arrangement writing — see below.)
 

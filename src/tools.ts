@@ -319,6 +319,26 @@ export function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "create_audio_track",
+    {
+      description:
+        "Create an audio track appended at the end of the track list. Use this when you " +
+        "need to land an audio clip on the Session grid (e.g. via load_browser_clip with " +
+        "an audio .alc loop). Returns the zero-based track_index of the new track.",
+      inputSchema: { name: z.string().optional().describe("Optional name for the new track.") },
+    },
+    async ({ name }) => {
+      const c = await getClient();
+      const reply = await c.query("/live/song/get/num_tracks");
+      const newIndex = asNum(reply[0]);
+      c.send("/live/song/create_audio_track", i(-1));
+      await sleep(LIVE_TICK_MS);
+      if (name) c.send("/live/track/set/name", i(newIndex), name);
+      return jsonResult({ track_index: newIndex });
+    },
+  );
+
+  server.registerTool(
     "load_instrument",
     {
       description:
@@ -1468,7 +1488,7 @@ export function registerTools(server: McpServer): void {
       throw new Error(
         `Load timed out: ${node} item ${JSON.stringify(path)} did not appear on track ` +
           `${track_index} within ${LOAD_TIMEOUT_MS / 1000}s. Verify the path with list_${node} ` +
-          "(and note this loads device items — browser clips aren't supported here).",
+          "(this loads device items; browser clips are a Live API ceiling — see DESIGN.md).",
       );
     },
   );
