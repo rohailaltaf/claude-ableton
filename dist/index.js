@@ -25166,7 +25166,7 @@ function registerTools(server) {
   server.registerTool(
     "create_audio_track",
     {
-      description: "Create an audio track appended at the end of the track list. Use this when you need to land an audio clip on the Session grid (e.g. via load_browser_clip with an audio .alc loop). Returns the zero-based track_index of the new track.",
+      description: "Create an audio track appended at the end of the track list. Pair with `load_audio_clip` to drop an audio file (drum loop, vocal stem, anything .wav/.aif/.mp3) onto the Session grid as a real audio clip. Returns the zero-based track_index of the new track.",
       inputSchema: { name: external_exports.string().optional().describe("Optional name for the new track.") }
     },
     async ({ name }) => {
@@ -26799,7 +26799,7 @@ function registerTools(server) {
   server.registerTool(
     "load_sample",
     {
-      description: "Load a sample onto a MIDI track (Live wraps it in a Simpler). Playable via MIDI; replaces any existing instrument. Fire-and-forget (loads can be slow on first call).",
+      description: "Load a sample from Live's Samples browser onto a MIDI track, wrapped in a Simpler. **Pick this for pitched / triggered use** \u2014 one-shots played from MIDI notes, melodic samples played up and down the keyboard, building a kit one Simpler at a time. The sample plays at the pitch of the note that triggers it. Replaces any existing instrument on the track. Path is walked under `app.browser.samples` (use `list_samples` to discover). **For a sample that's not in Live's browser (anywhere on disk), or to put a loop on the Session grid as a real audio clip you fire directly (not triggered via MIDI), use `load_audio_clip` instead.** Fire-and-forget.",
       inputSchema: {
         track_index: external_exports.number().int(),
         sample_path: external_exports.string().describe("slash-separated path under app.browser.samples")
@@ -26815,7 +26815,7 @@ function registerTools(server) {
   server.registerTool(
     "load_audio_clip",
     {
-      description: "Drop an audio file directly into a Session clip slot as a real audio clip \u2014 wraps Live's `ClipSlot.create_audio_clip`. **This is the only programmatic way to land an audio loop on the Session grid** (Live's Clip API otherwise can't materialise audio clips from files; `load_sample` is the Simpler-wrapped fallback). Requirements: track must be an **audio track** (use `create_audio_track`), the slot must be **empty**, and `file_path` must be an **absolute filesystem path** to a decodable audio file (.wav/.aif/.aiff/.mp3/.flac/.ogg). `.alc` browser clips are XML wrappers and are NOT accepted directly \u2014 extract the audio reference first.",
+      description: "Drop an audio file directly into a Session clip slot as a real audio clip \u2014 the file plays as audio when you fire the slot, warpable / slicable / loopable. **Pick this for loops, stems, bounced parts, or any audio file outside Live's browser** (anywhere on disk: ~/Downloads, an external sample collection, output from another DAW, AI-generated audio). **For a sample that lives in Live's Samples browser AND you want to trigger it via MIDI (pitched / drum-pad-style), use `load_sample` instead** \u2014 that wraps it in a Simpler on a MIDI track. The two tools are not interchangeable: this lands audio on an audio track; `load_sample` lands an instrument on a MIDI track. Requires: an **audio track** (use `create_audio_track`), an **empty slot**, and an **absolute filesystem path** to a decodable audio file (.wav/.aif/.aiff/.mp3/.flac/.ogg). Live's `.alc` browser clips are XML wrappers (not raw audio) and are NOT accepted \u2014 no LOM path for those today.",
       inputSchema: {
         track_index: external_exports.number().int().describe("zero-based audio track index"),
         clip_slot: external_exports.number().int().describe("zero-based clip slot (scene) index; must be empty"),
