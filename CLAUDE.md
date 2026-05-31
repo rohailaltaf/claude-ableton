@@ -51,6 +51,19 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
 - Keep AbletonOSC's MIT license + attribution to **Daniel Jones / ideoforms**
   (`vendor/AbletonOSC/LICENSE.md`). Do not add a prior-art credit to `ableton-mcp`
   (removed at the owner's request).
+- **`.alc` browser-clip loading is a confirmed ceiling.** Don't re-investigate. The
+  full LOM load surface is mapped (`app.browser.load_item` device-only,
+  `ClipSlot.create_clip` MIDI-empty, `ClipSlot.create_audio_clip` audio-file,
+  `ClipSlot.duplicate_clip_to` copy-only). `.alc` files are 200K-line track-
+  template XMLs with hard-coded build paths Live resolves via its pack registry —
+  reconstruction = reimplementing Live's set loader. See DESIGN.md ceilings
+  section for the receipts.
+- **The probe pattern that found `create_audio_clip` (and ruled out `.alc`):** add
+  a one-shot handler to the fork that does `dir(target_obj)` and logs the result,
+  fire `/live/api/reload`, inspect the AbletonOSC log
+  (`~/Music/Ableton/User Library/Remote Scripts/AbletonOSC/logs/abletonosc.log`).
+  Use this whenever Live's docs feel incomplete — Live exposes more LOM than
+  Cycling '74 documents.
 
 ## Testing against live Ableton
 - `node scripts/integration-test.mjs` drives all 102 tools (assertions + cleanup).
