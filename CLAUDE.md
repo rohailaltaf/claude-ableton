@@ -54,10 +54,18 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
 - **`.alc` browser-clip loading is a confirmed ceiling.** Don't re-investigate. The
   full LOM load surface is mapped (`app.browser.load_item` device-only,
   `ClipSlot.create_clip` MIDI-empty, `ClipSlot.create_audio_clip` audio-file,
-  `ClipSlot.duplicate_clip_to` copy-only). `.alc` files are 200K-line track-
-  template XMLs with hard-coded build paths Live resolves via its pack registry —
-  reconstruction = reimplementing Live's set loader. See DESIGN.md ceilings
-  section for the receipts.
+  `ClipSlot.duplicate_clip_to` copy-only). `.alc` files are serialized track
+  fragments: MIDI ones are ~228K-line XMLs (full MidiTrack + instrument rack +
+  notes); audio ones are smaller (1–7K lines) — `<AudioClip>` + `<SampleRef>` +
+  an `<AudioEffectGroupDevice>` chain (the baked-in effects are the whole point,
+  so loading just the `SampleRef` via `load_audio_clip` is lossy). No LOM method
+  takes an `.alc`. **Decisive proof (don't redo): Push 2 doesn't load `.alc`
+  either.** Decompiled `Push2/browser_component.pyc` (Py3.11 bytecode, via a real
+  3.11 interp + `dis`): its browser has no "clips" filter type at all
+  (only instruments/drum_pad/audio_effects/midi_effects/samples), and
+  `browse_for_audio_clip` browses **samples**, calling the same device-only
+  `_browser.load_item`. Ableton's own hardware sidesteps to raw samples — exactly
+  what `load_audio_clip` does. See DESIGN.md ceilings section for the receipts.
 - **The probe pattern that found `create_audio_clip` (and ruled out `.alc`):** add
   a one-shot handler to the fork that does `dir(target_obj)` and logs the result,
   fire `/live/api/reload`, inspect the AbletonOSC log
