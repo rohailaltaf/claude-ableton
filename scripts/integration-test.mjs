@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 107 tools
+ * Live integration test: spawn the built MCP server and exercise the 114 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -91,6 +91,20 @@ try {
     await call("set_tempo", { bpm: 90 });
     const r = await call("get_tempo");
     assert(Math.abs(r.bpm - 90) < 0.5, `expected 90 got ${r.bpm}`);
+  });
+  await step("get_song_length", async () => {
+    const r = await call("get_song_length");
+    assert(typeof r.length_beats === "number" && r.length_beats >= 0, "no length_beats");
+  });
+  await step("set_midi_recording_quantization (round-trip via none)", async () => {
+    await call("set_midi_recording_quantization", { grid: "1/16" });
+    const r = await call("set_midi_recording_quantization", { grid: "none" });
+    assert(r.value === 0, `expected value 0 for none, got ${r.value}`);
+  });
+  await step("set_groove_amount", async () => {
+    const r = await call("set_groove_amount", { amount: 0.5 });
+    assert(Math.abs(r.amount - 0.5) < 1e-6, "groove amount not echoed");
+    await call("set_groove_amount", { amount: 0 });
   });
 
   // ---- time signature: set 3/4, create_clip honors it, restore ----
@@ -224,8 +238,15 @@ try {
   });
   await step("set_clip_name", () => call("set_clip_name", { track_index: keysIdx, clip_slot: 0, name: "ZZ renamed" }));
   await step("set_clip_loop", () => call("set_clip_loop", { track_index: keysIdx, clip_slot: 0, looping: true }));
-  await step("set_clip_color", () => call("set_clip_color", { track_index: keysIdx, clip_slot: 0, color: 0xff8800 }));
+  await step("set_clip_color (RGB)", () => call("set_clip_color", { track_index: keysIdx, clip_slot: 0, color: 0xff8800 }));
+  await step("set_clip_color (color_index)", () => call("set_clip_color", { track_index: keysIdx, clip_slot: 0, color_index: 5 }));
   await step("quantize_clip", () => call("quantize_clip", { track_index: keysIdx, clip_slot: 0, grid: "1/16", amount: 1.0 }));
+  await step("duplicate_clip_loop (clip must loop)", async () => {
+    const before = (await call("list_clips", { track_index: keysIdx })).find((c) => c.clip_slot === 0);
+    await call("duplicate_clip_loop", { track_index: keysIdx, clip_slot: 0 });
+    const after = (await call("list_clips", { track_index: keysIdx })).find((c) => c.clip_slot === 0);
+    assert(after.length_beats >= before.length_beats, "loop length did not grow");
+  });
   await step("duplicate_clip (slot 0 -> 1)", async () => {
     await call("duplicate_clip", { track_index: keysIdx, clip_slot: 0, target_track: keysIdx, target_clip_slot: 1 });
     const clips = await call("list_clips", { track_index: keysIdx });
@@ -309,6 +330,25 @@ try {
   await step("set_track_pan", () => call("set_track_pan", { track_index: keysIdx, pan: -0.2 }));
   await step("set_track_mute", () => call("set_track_mute", { track_index: keysIdx, mute: false }));
   await step("set_track_solo", () => call("set_track_solo", { track_index: keysIdx, solo: false }));
+  await step("set_track_color (RGB) + color_index + list_tracks readback", async () => {
+    await call("set_track_color", { track_index: keysIdx, color_index: 12 });
+    const t = (await call("list_tracks")).find((x) => x.track_index === keysIdx);
+    assert(t.color_index === 12, `track color_index not 12 (got ${t.color_index})`);
+    await call("set_track_color", { track_index: keysIdx, color: 0x00ff00 });
+  });
+  await step("set_track_arm + monitoring + list_tracks readback", async () => {
+    const t0 = (await call("list_tracks")).find((x) => x.track_index === keysIdx);
+    assert(typeof t0.can_be_armed === "boolean", "no can_be_armed");
+    assert(t0.can_be_armed, "MIDI track should be armable");
+    await call("set_track_arm", { track_index: keysIdx, armed: true });
+    await call("set_track_monitoring", { track_index: keysIdx, mode: "in" });
+    const t1 = (await call("list_tracks")).find((x) => x.track_index === keysIdx);
+    assert(t1.armed === true, "track not armed");
+    assert(t1.monitoring === "in", `monitoring not 'in' (got ${t1.monitoring})`);
+    // restore
+    await call("set_track_monitoring", { track_index: keysIdx, mode: "auto" });
+    await call("set_track_arm", { track_index: keysIdx, armed: false });
+  });
 
   // ---- MIDI effects (loads ahead of instrument; device idx shifts) ----
   await step("list_midi_effects", async () => {

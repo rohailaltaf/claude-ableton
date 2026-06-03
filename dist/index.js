@@ -25116,6 +25116,19 @@ function validateSig(numerator, denominator) {
     );
   }
 }
+var REC_QUANTIZATION = {
+  none: 0,
+  "1/4": 1,
+  "1/8": 2,
+  "1/8t": 3,
+  "1/8 + 1/8t": 4,
+  "1/16": 5,
+  "1/16t": 6,
+  "1/16 + 1/16t": 7,
+  "1/32": 8
+};
+var MONITORING_STATE = { in: 0, auto: 1, off: 2 };
+var MONITORING_LABEL = ["in", "auto", "off"];
 function flattenSteps(steps) {
   if (!steps.length) throw new Error("steps list is empty");
   const flat = [];
@@ -25491,6 +25504,58 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "get_song_length",
+    {
+      description: "Read the length of the Arrangement in beats \u2014 the end of the last clip/event on the timeline. Useful before duplicate_clip_to_arrangement to append at the end.",
+      inputSchema: {}
+    },
+    async () => {
+      const c = await getClient();
+      const reply = await c.query("/live/song/get/song_length");
+      return jsonResult({ length_beats: asNum(reply[0]) });
+    }
+  );
+  server.registerTool(
+    "set_midi_recording_quantization",
+    {
+      description: "Set the global input quantization applied to newly recorded MIDI (Edit menu \u2192 Record Quantization). 'none' records exactly as played; the grid values snap recorded notes. Affects future recordings, not existing clips (use quantize_clip for those).",
+      inputSchema: {
+        grid: external_exports.string().describe(
+          "one of: none, 1/4, 1/8, 1/8t, 1/8 + 1/8t, 1/16, 1/16t, 1/16 + 1/16t, 1/32"
+        )
+      }
+    },
+    async ({ grid }) => {
+      const key = grid.toLowerCase().trim();
+      const value = REC_QUANTIZATION[key];
+      if (value === void 0) {
+        throw new Error(
+          `unknown grid ${JSON.stringify(grid)}; choose from ${Object.keys(REC_QUANTIZATION).map((k) => JSON.stringify(k)).join(", ")}`
+        );
+      }
+      const c = await getClient();
+      c.send("/live/song/set/midi_recording_quantization", i(value));
+      return jsonResult({ grid: key, value });
+    }
+  );
+  server.registerTool(
+    "set_groove_amount",
+    {
+      description: "Set the global Groove Amount \u2014 the master scaler (Groove Pool's 'Amount' knob) that multiplies how much every track's groove is applied. 0.0 = no groove, 1.0 = 100% (full), up to ~1.31 (131%, Live's max). Has audible effect only when clips have a groove assigned.",
+      inputSchema: {
+        amount: external_exports.number().describe("0.0-1.31 (0%-131%)")
+      }
+    },
+    async ({ amount }) => {
+      if (!(amount >= 0 && amount <= 1.31)) {
+        throw new Error(`amount ${amount} out of range 0.0-1.31`);
+      }
+      const c = await getClient();
+      c.send("/live/song/set/groove_amount", f(amount));
+      return jsonResult({ amount, action: "set" });
+    }
+  );
+  server.registerTool(
     "set_time_signature",
     {
       description: "Set the project (song) time signature. Common sigs: 4/4, 3/4 (waltz), 6/8 (ballad), 7/8 / 5/4 (odd meters). Denominator must be a power of 2 (1, 2, 4, 8, 16, 32, 64). create_clip and chord_progression will honor this for bars\u2194beats. For a single clip in a different meter, use set_clip_time_signature.",
@@ -25736,6 +25801,22 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "duplicate_clip_loop",
+    {
+      description: "Double a clip's loop in place: copies the looped material into the second half and extends the loop (and clip) to twice its length. Live's 'Duplicate Loop' (\u2318\u21E7D in the clip). Repeat to keep doubling. Great for building a 2-bar idea up to 4, 8, 16 bars. The clip must be looping.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a looping clip")
+      }
+    },
+    async ({ track_index, clip_slot }) => {
+      const c = await getClient();
+      c.send("/live/clip/duplicate_loop", i(track_index), i(clip_slot));
+      await sleep(LIVE_TICK_MS);
+      return jsonResult({ track_index, clip_slot, action: "loop duplicated" });
+    }
+  );
+  server.registerTool(
     "set_clip_name",
     {
       description: "Rename the clip in the given slot.",
@@ -25770,17 +25851,28 @@ function registerTools(server) {
   server.registerTool(
     "set_clip_color",
     {
-      description: "Set a clip's color as a packed RGB integer (0xRRGGBB, e.g. 0xFF8800 = orange).",
+      description: "Set a clip's color. Provide either color (packed RGB 0xRRGGBB, e.g. 0xFF8800 = orange \u2014 Live snaps it to the nearest swatch) or color_index (0-69, a direct index into Live's clip color palette). Pass exactly one.",
       inputSchema: {
         track_index: external_exports.number().int(),
         clip_slot: external_exports.number().int().describe("must contain a clip"),
-        color: external_exports.number().int().describe("packed RGB integer 0xRRGGBB")
+        color: external_exports.number().int().optional().describe("packed RGB integer 0xRRGGBB"),
+        color_index: external_exports.number().int().optional().describe("palette index 0-69")
       }
     },
-    async ({ track_index, clip_slot, color }) => {
+    async ({ track_index, clip_slot, color, color_index }) => {
+      if (color === void 0 === (color_index === void 0)) {
+        throw new Error("provide exactly one of color (RGB) or color_index (0-69)");
+      }
       const c = await getClient();
+      if (color_index !== void 0) {
+        if (color_index < 0 || color_index > 69) {
+          throw new Error(`color_index ${color_index} out of range 0-69`);
+        }
+        c.send("/live/clip/set/color_index", i(track_index), i(clip_slot), i(color_index));
+        return jsonResult({ track_index, clip_slot, color_index, action: "color set" });
+      }
       c.send("/live/clip/set/color", i(track_index), i(clip_slot), i(color));
-      return jsonResult({ track_index, clip_slot, action: "color set" });
+      return jsonResult({ track_index, clip_slot, color, action: "color set" });
     }
   );
   server.registerTool(
@@ -26253,7 +26345,7 @@ function registerTools(server) {
   server.registerTool(
     "list_tracks",
     {
-      description: "List every track with its zero-based index, name, whether it accepts MIDI input, and device count. Use before any fix-the-bass / swap-the-lead workflow.",
+      description: "List every track with its zero-based index, name, whether it accepts MIDI input, device count, record-arm state (arm / can_be_armed), input monitoring mode (in / auto / off), and color (RGB int + palette index). Use before any fix-the-bass / swap-the-lead / arm-and-record workflow.",
       inputSchema: {}
     },
     async () => {
@@ -26265,11 +26357,27 @@ function registerTools(server) {
         const nameReply = await c.query("/live/track/get/name", [i(k)]);
         const midiReply = await c.query("/live/track/get/has_midi_input", [i(k)]);
         const ndevReply = await c.query("/live/track/get/num_devices", [i(k)]);
+        const canArmReply = await c.query("/live/track/get/can_be_armed", [i(k)]);
+        const canBeArmed = asBool(canArmReply[1]);
+        let armed = false;
+        let monitoring = null;
+        if (canBeArmed) {
+          armed = asBool((await c.query("/live/track/get/arm", [i(k)]))[1]);
+          const monInt = asNum((await c.query("/live/track/get/current_monitoring_state", [i(k)]))[1]);
+          monitoring = MONITORING_LABEL[monInt] ?? null;
+        }
+        const colorReply = await c.query("/live/track/get/color", [i(k)]);
+        const colorIdxReply = await c.query("/live/track/get/color_index", [i(k)]);
         tracks.push({
           track_index: k,
           name: asStr(nameReply[1]),
           is_midi: asBool(midiReply[1]),
-          num_devices: asNum(ndevReply[1])
+          num_devices: asNum(ndevReply[1]),
+          can_be_armed: canBeArmed,
+          armed,
+          monitoring,
+          color: asNum(colorReply[1]),
+          color_index: asNum(colorIdxReply[1])
         });
       }
       return jsonResult(tracks);
@@ -26379,6 +26487,69 @@ function registerTools(server) {
       const c = await getClient();
       c.send("/live/track/set/solo", i(track_index), i(solo ? 1 : 0));
       return jsonResult({ track_index, property: "solo", value: solo ? 1 : 0 });
+    }
+  );
+  server.registerTool(
+    "set_track_color",
+    {
+      description: "Set a track's color. Provide either color (packed RGB 0xRRGGBB, e.g. 0xFF8800 = orange \u2014 Live snaps to the nearest swatch) or color_index (0-69, a direct index into Live's track color palette). Pass exactly one. Read back via list_tracks.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        color: external_exports.number().int().optional().describe("packed RGB integer 0xRRGGBB"),
+        color_index: external_exports.number().int().optional().describe("palette index 0-69")
+      }
+    },
+    async ({ track_index, color, color_index }) => {
+      if (color === void 0 === (color_index === void 0)) {
+        throw new Error("provide exactly one of color (RGB) or color_index (0-69)");
+      }
+      const c = await getClient();
+      if (color_index !== void 0) {
+        if (color_index < 0 || color_index > 69) {
+          throw new Error(`color_index ${color_index} out of range 0-69`);
+        }
+        c.send("/live/track/set/color_index", i(track_index), i(color_index));
+        return jsonResult({ track_index, color_index, action: "color set" });
+      }
+      c.send("/live/track/set/color", i(track_index), i(color));
+      return jsonResult({ track_index, color, action: "color set" });
+    }
+  );
+  server.registerTool(
+    "set_track_arm",
+    {
+      description: "Arm or disarm a track for recording (the red record-enable button). Only regular audio/MIDI tracks can be armed \u2014 group, return, and master tracks cannot. Returns can_be_armed so you can tell whether the arm took effect. Read current arm state via list_tracks.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        armed: external_exports.boolean().describe("true to arm, false to disarm")
+      }
+    },
+    async ({ track_index, armed }) => {
+      const c = await getClient();
+      const canReply = await c.query("/live/track/get/can_be_armed", [i(track_index)]);
+      const canBeArmed = asBool(canReply[1]);
+      if (!canBeArmed) {
+        throw new Error(
+          `track ${track_index} cannot be armed (group/return/master tracks have no record-enable). Pick a regular audio or MIDI track.`
+        );
+      }
+      c.send("/live/track/set/arm", i(track_index), i(armed ? 1 : 0));
+      return jsonResult({ track_index, armed, can_be_armed: canBeArmed });
+    }
+  );
+  server.registerTool(
+    "set_track_monitoring",
+    {
+      description: "Set a track's input monitoring mode: 'in' (always monitor the input), 'auto' (monitor only when armed and not playing a clip \u2014 the default), or 'off' (never monitor). Read current state via list_tracks.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        mode: external_exports.enum(["in", "auto", "off"]).describe("monitoring mode")
+      }
+    },
+    async ({ track_index, mode }) => {
+      const c = await getClient();
+      c.send("/live/track/set/current_monitoring_state", i(track_index), i(MONITORING_STATE[mode]));
+      return jsonResult({ track_index, mode });
     }
   );
   server.registerTool(
