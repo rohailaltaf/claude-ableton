@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 102 tools
+ * Live integration test: spawn the built MCP server and exercise the 107 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -256,6 +256,26 @@ try {
   });
   await step("duplicate_scene", () => call("duplicate_scene", { scene_index: newSceneIdx }));
   await step("rename_scene", () => call("rename_scene", { scene_index: newSceneIdx, name: "ZZ scene 2" }));
+  await step("set_scene_tempo + set_scene_time_signature + list_scenes readback", async () => {
+    await call("set_scene_tempo", { scene_index: newSceneIdx, bpm: 142 });
+    await call("set_scene_time_signature", { scene_index: newSceneIdx, numerator: 7, denominator: 8 });
+    const scenes = await call("list_scenes");
+    const sc = scenes.find((s) => s.scene_index === newSceneIdx);
+    assert(sc, "scene not found in list_scenes");
+    assert(sc.tempo_enabled === true, "tempo_enabled not set");
+    assert(Math.abs(sc.tempo - 142) < 0.5, `scene tempo not 142 (got ${sc.tempo})`);
+    assert(sc.time_signature_enabled === true, "time_signature_enabled not set");
+    assert(
+      sc.time_signature && sc.time_signature.numerator === 7 && sc.time_signature.denominator === 8,
+      `scene time sig not 7/8 (got ${JSON.stringify(sc.time_signature)})`,
+    );
+    // clear overrides
+    await call("set_scene_tempo", { scene_index: newSceneIdx, bpm: 120, enabled: false });
+    await call("set_scene_time_signature", { scene_index: newSceneIdx, numerator: 4, denominator: 4, enabled: false });
+    const cleared = (await call("list_scenes")).find((s) => s.scene_index === newSceneIdx);
+    assert(cleared.tempo_enabled === false && cleared.tempo === null, "tempo override not cleared");
+    assert(cleared.time_signature_enabled === false && cleared.time_signature === null, "time sig override not cleared");
+  });
   await step("delete_scene (the duplicate)", () => call("delete_scene", { scene_index: newSceneIdx + 1 }));
 
   // ---- transport ----
@@ -264,7 +284,15 @@ try {
   await step("stop_clip", () => call("stop_clip", { track_index: keysIdx, clip_slot: 0 }));
   await step("start_playing", () => call("start_playing"));
   await step("continue_playing", () => call("continue_playing"));
+  await step("stop_all_clips (all)", () => call("stop_all_clips"));
+  await step("stop_all_clips (one track)", () => call("stop_all_clips", { track_index: keysIdx }));
   await step("stop_playing", () => call("stop_playing"));
+  await step("undo + redo", async () => {
+    const u = await call("undo");
+    assert(typeof u.can_undo_more === "boolean", "undo missing can_undo_more");
+    const r = await call("redo");
+    assert(typeof r.can_redo_more === "boolean", "redo missing can_redo_more");
+  });
 
   // ---- arrangement ----
   await step("duplicate_clip_to_arrangement x2", async () => {

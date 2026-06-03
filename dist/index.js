@@ -25310,7 +25310,7 @@ function registerTools(server) {
   server.registerTool(
     "list_scenes",
     {
-      description: "List every scene (row) with its index, name, and whether it's empty. is_empty is true when no track has a clip in that row.",
+      description: "List every scene (row) with its index, name, whether it's empty, and any per-scene tempo / time-signature override (tempo & time_signature are null unless the scene sets one \u2014 see set_scene_tempo / set_scene_time_signature). is_empty is true when no track has a clip in that row.",
       inputSchema: {}
     },
     async () => {
@@ -25321,10 +25321,28 @@ function registerTools(server) {
       for (let k = 0; k < n; k++) {
         const nameReply = await c.query("/live/scene/get/name", [i(k)]);
         const emptyReply = await c.query("/live/scene/get/is_empty", [i(k)]);
+        const tempoEnReply = await c.query("/live/scene/get/tempo_enabled", [i(k)]);
+        const tsEnReply = await c.query("/live/scene/get/time_signature_enabled", [i(k)]);
+        const tempoEnabled = asBool(tempoEnReply[1]);
+        const tsEnabled = asBool(tsEnReply[1]);
+        let tempo = null;
+        if (tempoEnabled) {
+          tempo = asNum((await c.query("/live/scene/get/tempo", [i(k)]))[1]);
+        }
+        let timeSignature = null;
+        if (tsEnabled) {
+          const tsNum = asNum((await c.query("/live/scene/get/time_signature_numerator", [i(k)]))[1]);
+          const tsDen = asNum((await c.query("/live/scene/get/time_signature_denominator", [i(k)]))[1]);
+          timeSignature = { numerator: tsNum, denominator: tsDen };
+        }
         scenes.push({
           scene_index: k,
           name: asStr(nameReply[1]),
-          is_empty: asBool(emptyReply[1])
+          is_empty: asBool(emptyReply[1]),
+          tempo,
+          tempo_enabled: tempoEnabled,
+          time_signature: timeSignature,
+          time_signature_enabled: tsEnabled
         });
       }
       return jsonResult(scenes);
@@ -25388,6 +25406,53 @@ function registerTools(server) {
       const c = await getClient();
       c.send("/live/song/delete_scene", i(scene_index));
       return jsonResult({ scene_index, action: "deleted" });
+    }
+  );
+  server.registerTool(
+    "set_scene_tempo",
+    {
+      description: "Set a per-scene tempo. When the scene is fired, Live jumps to this BPM and holds it until another tempo-bearing scene fires \u2014 the way you build tempo changes into a Session set. Pass enabled=false to clear the scene's tempo override (the scene stops dictating tempo). Range 20-999. Read back via list_scenes.",
+      inputSchema: {
+        scene_index: external_exports.number().int().describe("zero-based scene index"),
+        bpm: external_exports.number().describe("scene tempo in BPM (20-999)"),
+        enabled: external_exports.boolean().default(true).describe("false clears the scene's tempo override instead of setting it")
+      }
+    },
+    async ({ scene_index, bpm, enabled }) => {
+      if (enabled && !(bpm >= 20 && bpm <= 999)) {
+        throw new Error(`bpm ${bpm} out of range 20-999`);
+      }
+      const c = await getClient();
+      if (enabled) c.send("/live/scene/set/tempo", i(scene_index), f(bpm));
+      c.send("/live/scene/set/tempo_enabled", i(scene_index), enabled);
+      return jsonResult({ scene_index, bpm: enabled ? bpm : null, tempo_enabled: enabled });
+    }
+  );
+  server.registerTool(
+    "set_scene_time_signature",
+    {
+      description: "Set a per-scene time signature. When the scene is fired, Live switches to this meter \u2014 lets you change meter across a Session set scene by scene. Common sigs: 4/4, 3/4, 6/8, 7/8, 5/4. Pass enabled=false to clear the scene's time-signature override. numerator 1-99, denominator a power of 2 (1,2,4,8,16,32,64). Read back via list_scenes.",
+      inputSchema: {
+        scene_index: external_exports.number().int().describe("zero-based scene index"),
+        numerator: external_exports.number().int().describe("beats per bar (1-99)"),
+        denominator: external_exports.number().int().describe("beat unit, power of 2 (1,2,4,8,16,32,64)"),
+        enabled: external_exports.boolean().default(true).describe("false clears the scene's time-signature override instead of setting it")
+      }
+    },
+    async ({ scene_index, numerator, denominator, enabled }) => {
+      if (enabled) validateSig(numerator, denominator);
+      const c = await getClient();
+      if (enabled) {
+        c.send("/live/scene/set/time_signature_numerator", i(scene_index), i(numerator));
+        c.send("/live/scene/set/time_signature_denominator", i(scene_index), i(denominator));
+      }
+      c.send("/live/scene/set/time_signature_enabled", i(scene_index), enabled);
+      return jsonResult({
+        scene_index,
+        numerator: enabled ? numerator : null,
+        denominator: enabled ? denominator : null,
+        time_signature_enabled: enabled
+      });
     }
   );
   server.registerTool(
@@ -25579,6 +25644,52 @@ function registerTools(server) {
       const c = await getClient();
       c.send("/live/song/continue_playing");
       return jsonResult({ action: "continued" });
+    }
+  );
+  server.registerTool(
+    "stop_all_clips",
+    {
+      description: "Stop currently-playing Session clips while the transport keeps running (unlike stop_playing, which halts the transport). With no track_index, stops every track's clips; with track_index, stops only that track's clips.",
+      inputSchema: {
+        track_index: external_exports.number().int().optional().describe("optional: stop only this track's clips; omit to stop all tracks")
+      }
+    },
+    async ({ track_index }) => {
+      const c = await getClient();
+      if (track_index === void 0) {
+        c.send("/live/song/stop_all_clips");
+        return jsonResult({ scope: "all", action: "stopped" });
+      }
+      c.send("/live/track/stop_all_clips", i(track_index));
+      return jsonResult({ scope: "track", track_index, action: "stopped" });
+    }
+  );
+  server.registerTool(
+    "undo",
+    {
+      description: "Undo the last action in Live \u2014 identical to Cmd+Z in the app. Walks back through Live's own undo history, so it covers changes made by these tools (notes, devices, clips, mixer moves, scene edits) as well as the user's own edits. Returns can_undo_more so you know whether further undo steps remain.",
+      inputSchema: {}
+    },
+    async () => {
+      const c = await getClient();
+      c.send("/live/song/undo");
+      await sleep(LIVE_TICK_MS);
+      const r = await c.query("/live/song/get/can_undo");
+      return jsonResult({ action: "undone", can_undo_more: asBool(r[0]) });
+    }
+  );
+  server.registerTool(
+    "redo",
+    {
+      description: "Redo the last undone action in Live \u2014 identical to Cmd+Shift+Z. Returns can_redo_more so you know whether further redo steps remain.",
+      inputSchema: {}
+    },
+    async () => {
+      const c = await getClient();
+      c.send("/live/song/redo");
+      await sleep(LIVE_TICK_MS);
+      const r = await c.query("/live/song/get/can_redo");
+      return jsonResult({ action: "redone", can_redo_more: asBool(r[0]) });
     }
   );
   server.registerTool(
