@@ -1885,8 +1885,10 @@ export function registerTools(server: McpServer): void {
     {
       description:
         "List the devices (instrument + effects) on a track: index, name, type_id " +
-        "(0=audio_effect, 1=instrument, 2=midi_effect), class_name. Use to discover " +
-        "device indices before delete_device / get_device_parameters.",
+        "(0=audio_effect, 1=instrument, 2=midi_effect), class_name, and is_on " +
+        "(whether the device is enabled — false means bypassed; null if the device has " +
+        "no standard on/off switch). Use to discover device indices before " +
+        "delete_device / get_device_parameters / set_device_active.",
       inputSchema: { track_index: z.number().int() },
     },
     async ({ track_index }) => {
@@ -1899,11 +1901,27 @@ export function registerTools(server: McpServer): void {
       const classes = (await c.query("/live/track/get/devices/class_name", [i(track_index)])).slice(1);
       const devices = [];
       for (let k = 0; k < n; k++) {
+        // Read the device on/off state from its first parameter ("Device On").
+        let isOn: boolean | null = null;
+        const p0NameReply = await c.query("/live/device/get/parameter/name", [
+          i(track_index),
+          i(k),
+          i(0),
+        ]);
+        if (asStr(p0NameReply[3]) === "Device On") {
+          const p0ValReply = await c.query("/live/device/get/parameter/value", [
+            i(track_index),
+            i(k),
+            i(0),
+          ]);
+          isOn = asNum(p0ValReply[3]) >= 0.5;
+        }
         devices.push({
           device_index: k,
           name: asStr(names[k]),
           type_id: asNum(types[k]),
           class_name: asStr(classes[k]),
+          is_on: isOn,
         });
       }
       return jsonResult(devices);
@@ -2105,6 +2123,48 @@ export function registerTools(server: McpServer): void {
         f(value),
       );
       return jsonResult({ track_index, device_index, parameter_index, value });
+    },
+  );
+
+  server.registerTool(
+    "set_device_active",
+    {
+      description:
+        "Enable or disable (bypass) a device — the on/off switch in the device's title " +
+        "bar. active=false bypasses it (signal passes through untouched); active=true " +
+        "re-enables it. Toggles the device's 'Device On' switch. Read the current state " +
+        "from get_track_devices (is_on field). Note: Live exposes is_active as read-only, " +
+        "so this drives the 'Device On' parameter, which is the writable equivalent.",
+      inputSchema: {
+        track_index: z.number().int(),
+        device_index: z.number().int(),
+        active: z.boolean().describe("true = enabled, false = bypassed"),
+      },
+    },
+    async ({ track_index, device_index, active }) => {
+      const c = await getClient();
+      // Guard: confirm parameter 0 is the standard "Device On" switch before
+      // flipping it (avoids toggling some unrelated first parameter on, e.g., an
+      // unusual plugin layout).
+      const nameReply = await c.query("/live/device/get/parameter/name", [
+        i(track_index),
+        i(device_index),
+        i(0),
+      ]);
+      if (asStr(nameReply[3]) !== "Device On") {
+        throw new Error(
+          `device (${track_index}, ${device_index}) has no standard on/off switch ` +
+            `(its first parameter is ${JSON.stringify(asStr(nameReply[3]))}). Cannot toggle.`,
+        );
+      }
+      c.send(
+        "/live/device/set/parameter/value",
+        i(track_index),
+        i(device_index),
+        i(0),
+        f(active ? 1 : 0),
+      );
+      return jsonResult({ track_index, device_index, active });
     },
   );
 

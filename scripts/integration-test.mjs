@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 114 tools
+ * Live integration test: spawn the built MCP server and exercise the 115 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -193,6 +193,16 @@ try {
       parameter_index: p.parameter_index,
       value: p.min + (p.max - p.min) * 0.5,
     });
+  });
+  await step("set_device_active + get_track_devices is_on readback", async () => {
+    const before = await call("get_track_devices", { track_index: keysIdx });
+    assert(before[0].is_on === true, `expected is_on true, got ${before[0].is_on}`);
+    await call("set_device_active", { track_index: keysIdx, device_index: 0, active: false });
+    const off = await call("get_track_devices", { track_index: keysIdx });
+    assert(off[0].is_on === false, `expected is_on false after disable, got ${off[0].is_on}`);
+    await call("set_device_active", { track_index: keysIdx, device_index: 0, active: true });
+    const on = await call("get_track_devices", { track_index: keysIdx });
+    assert(on[0].is_on === true, "device did not re-enable");
   });
 
   // ---- clips + notes ----
