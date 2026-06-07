@@ -2,7 +2,7 @@
 
 A local MCP server that lets Claude create tracks, load instruments, and write MIDI clips in Ableton Live 12.
 
-> **Status**: implemented and shipping. Node/TypeScript MCP server, ~115 tools, distributed as a Claude plugin (Code + Desktop) and via `npx` for other MCP clients. This doc captures design decisions; install/usage lives in [README.md](README.md).
+> **Status**: implemented and shipping. Node/TypeScript MCP server, ~117 tools, distributed as a Claude plugin (Code + Desktop) and via `npx` for other MCP clients. This doc captures design decisions; install/usage lives in [README.md](README.md).
 
 ## Setup
 

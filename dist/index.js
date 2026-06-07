@@ -26086,6 +26086,41 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "set_clip_legato",
+    {
+      description: "Turn a clip's Legato launch on or off (a Session-clip launch-box setting). When legato is on, launching this clip continues playback from the position of the previously-playing clip on the track instead of restarting from the top \u2014 used for seamless transitions between variations that stay in sync.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a clip"),
+        legato: external_exports.boolean()
+      }
+    },
+    async ({ track_index, clip_slot, legato }) => {
+      const c = await getClient();
+      c.send("/live/clip/set/legato", i(track_index), i(clip_slot), i(legato ? 1 : 0));
+      return jsonResult({ track_index, clip_slot, legato });
+    }
+  );
+  server.registerTool(
+    "set_clip_velocity_amount",
+    {
+      description: "Set how much the velocity of the MIDI note that launches a clip scales the clip's volume (the launch-box 'Velocity' amount). 0.0 = velocity has no effect (default); 1.0 = full sensitivity, so a softer trigger plays the clip quieter. Only audible when the clip is launched from a velocity-sensitive source.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a clip"),
+        amount: external_exports.number().describe("0.0-1.0")
+      }
+    },
+    async ({ track_index, clip_slot, amount }) => {
+      if (!(amount >= 0 && amount <= 1)) {
+        throw new Error(`amount ${amount} out of range 0.0-1.0`);
+      }
+      const c = await getClient();
+      c.send("/live/clip/set/velocity_amount", i(track_index), i(clip_slot), f(amount));
+      return jsonResult({ track_index, clip_slot, amount });
+    }
+  );
+  server.registerTool(
     "quantize_clip",
     {
       description: "Quantize a clip's note timing toward a grid. amount=1.0 is a full snap; lower values pull notes partway (preserving feel). grid is one of 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32 (T = triplet).",

@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 115 tools
+ * Live integration test: spawn the built MCP server and exercise the 117 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -148,6 +148,8 @@ try {
     await call("set_clip_loop_region", { track_index: idx, clip_slot: 0, loop_start: 0, loop_end: 4 });
     await call("set_clip_launch_mode", { track_index: idx, clip_slot: 0, mode: "gate" });
     await call("set_clip_launch_quantization", { track_index: idx, clip_slot: 0, grid: "1/4" });
+    await call("set_clip_legato", { track_index: idx, clip_slot: 0, legato: true });
+    await call("set_clip_velocity_amount", { track_index: idx, clip_slot: 0, amount: 0.5 });
     await call("set_clip_warp", { track_index: idx, clip_slot: 0, warping: false });
     await call("set_clip_position", { track_index: idx, clip_slot: 0, position_beats: 4 });
 
@@ -155,6 +157,9 @@ try {
     let rejected = false;
     try { await call("set_launch_quantization", { grid: "bogus" }); } catch { rejected = true; }
     assert(rejected, "invalid grid was not rejected");
+    let velRejected = false;
+    try { await call("set_clip_velocity_amount", { track_index: idx, clip_slot: 0, amount: 2 }); } catch { velRejected = true; }
+    assert(velRejected, "out-of-range velocity_amount was not rejected");
 
     await call("delete_track", { track_index: idx });
     await call("set_project_scale", origScale);
