@@ -180,9 +180,62 @@ class ClipHandler(AbletonOSCHandler):
                 raise ValueError("Invalid number of arguments for /clip/remove/notes. Either 0 or 4 arguments must be passed.")
             clip.remove_notes_extended(pitch_start, pitch_span, time_start, time_span)
 
+        # ---- Extended note API (Live 11+): note_id + per-note probability,
+        # velocity_deviation, release_velocity. 9 fields/note. ----
+        def clip_get_notes_extended(clip, params: Tuple[Any] = ()):
+            if len(params) == 4:
+                pitch_start, pitch_span, time_start, time_span = params
+            elif len(params) == 0:
+                pitch_start, pitch_span, time_start, time_span = 0, 127, -8192, 16384
+            else:
+                raise ValueError("Invalid number of arguments for /clip/get/notes_extended. Either 0 or 4 arguments must be passed.")
+            notes = clip.get_notes_extended(pitch_start, pitch_span, time_start, time_span)
+            attrs = []
+            for note in notes:
+                attrs += [note.note_id, note.pitch, note.start_time, note.duration,
+                          note.velocity, note.mute, note.probability,
+                          note.velocity_deviation, note.release_velocity]
+            return tuple(attrs)
+
+        def clip_add_notes_extended(clip, params: Tuple[Any] = ()):
+            # 8 fields/note: pitch, start, duration, velocity, mute, probability,
+            # velocity_deviation, release_velocity
+            notes = []
+            for o in range(0, len(params), 8):
+                pitch, start_time, duration, velocity, mute, probability, vdev, relvel = params[o:o + 8]
+                notes.append(Live.Clip.MidiNoteSpecification(
+                    pitch=int(pitch), start_time=start_time, duration=duration,
+                    velocity=velocity, mute=bool(mute), probability=probability,
+                    velocity_deviation=vdev, release_velocity=relvel))
+            clip.add_new_notes(tuple(notes))
+
+        def clip_apply_note_modifications(clip, params: Tuple[Any] = ()):
+            # 9 fields/note: note_id, pitch, start, duration, velocity, mute,
+            # probability, velocity_deviation, release_velocity. Matches existing
+            # notes by note_id and overwrites their full state.
+            mods = {}
+            for o in range(0, len(params), 9):
+                note_id, pitch, start_time, duration, velocity, mute, probability, vdev, relvel = params[o:o + 9]
+                mods[int(note_id)] = (int(pitch), start_time, duration, velocity,
+                                      bool(mute), probability, vdev, relvel)
+            if not mods:
+                return
+            notes = clip.get_notes_extended(0, 127, -8192, 16384)
+            for note in notes:
+                m = mods.get(note.note_id)
+                if m is None:
+                    continue
+                (note.pitch, note.start_time, note.duration, note.velocity,
+                 note.mute, note.probability, note.velocity_deviation,
+                 note.release_velocity) = m
+            clip.apply_note_modifications(notes)
+
         self.osc_server.add_handler("/live/clip/get/notes", create_clip_callback(clip_get_notes))
         self.osc_server.add_handler("/live/clip/add/notes", create_clip_callback(clip_add_notes))
         self.osc_server.add_handler("/live/clip/remove/notes", create_clip_callback(clip_remove_notes))
+        self.osc_server.add_handler("/live/clip/get/notes_extended", create_clip_callback(clip_get_notes_extended))
+        self.osc_server.add_handler("/live/clip/add/notes_extended", create_clip_callback(clip_add_notes_extended))
+        self.osc_server.add_handler("/live/clip/apply_note_modifications", create_clip_callback(clip_apply_note_modifications))
 
         def clips_filter_handler(params: Tuple):
             # TODO: Pre-cache clip notes

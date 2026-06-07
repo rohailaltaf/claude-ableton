@@ -5,6 +5,12 @@ export interface Note {
   start_beat: number; // beats from clip start
   duration_beat: number;
   velocity: number; // MIDI velocity, 1-127
+  // Optional Live 11+ per-note properties. Omitted = Live defaults
+  // (probability 1.0, velocity_deviation 0.0, release_velocity 64, mute false).
+  mute?: boolean;
+  probability?: number; // 0.0-1.0 chance the note plays
+  velocity_deviation?: number; // random velocity range added on playback
+  release_velocity?: number; // 0-127
 }
 
 export interface RhythmStep {

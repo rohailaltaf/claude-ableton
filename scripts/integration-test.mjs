@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 117 tools
+ * Live integration test: spawn the built MCP server and exercise the 118 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -226,11 +226,37 @@ try {
     });
     assert(r.note_count === 3, `note_count ${r.note_count}`);
   });
-  await step("get_notes round-trip", async () => {
+  await step("get_notes round-trip (with note_id + extended fields)", async () => {
     const got = await call("get_notes", { track_index: keysIdx, clip_slot: 0 });
     assert(got.length === 3, `got ${got.length} notes`);
     const pitches = got.map((n) => n.pitch).sort((a, b) => a - b);
     assert(pitches.join(",") === "60,64,67", `pitches ${pitches}`);
+    assert(got.every((n) => typeof n.note_id === "number"), "notes missing note_id");
+    assert(got.every((n) => n.probability === 1), "default probability not 1");
+  });
+  await step("set_note_properties (probability + velocity_deviation by note_id)", async () => {
+    const got = await call("get_notes", { track_index: keysIdx, clip_slot: 0 });
+    const target = got.find((n) => n.pitch === 64);
+    assert(target, "note 64 not found");
+    await call("set_note_properties", {
+      track_index: keysIdx,
+      clip_slot: 0,
+      modifications: [{ note_id: target.note_id, probability: 0.4, velocity_deviation: 15 }],
+    });
+    const after = (await call("get_notes", { track_index: keysIdx, clip_slot: 0 })).find((n) => n.note_id === target.note_id);
+    assert(Math.abs(after.probability - 0.4) < 1e-5, `probability not 0.4 (got ${after.probability})`);
+    assert(Math.abs(after.velocity_deviation - 15) < 1e-4, `velocity_deviation not 15 (got ${after.velocity_deviation})`);
+    assert(after.pitch === 64 && Math.abs(after.velocity - 90) < 1, "untouched fields changed");
+  });
+  await step("create_clip note with inline probability (add path)", async () => {
+    const t = (await call("create_midi_track", { name: "ZZ NoteProps" })).track_index;
+    await call("create_clip", {
+      track_index: t, clip_slot: 0, length_bars: 1,
+      notes: [{ pitch: 36, start_beat: 0, duration_beat: 1, velocity: 100, probability: 0.6 }],
+    });
+    const n = (await call("get_notes", { track_index: t, clip_slot: 0 }))[0];
+    assert(Math.abs(n.probability - 0.6) < 1e-5, `inline probability not applied (got ${n.probability})`);
+    await call("delete_track", { track_index: t });
   });
   await step("add_notes_to_clip", async () => {
     await call("add_notes_to_clip", {

@@ -24952,7 +24952,11 @@ var noteSchema = external_exports.object({
   pitch: external_exports.number().int().describe("MIDI note number 0-127 (60 = C4)"),
   start_beat: external_exports.number().describe("beats from clip start (>= 0)"),
   duration_beat: external_exports.number().describe("beats (> 0)"),
-  velocity: external_exports.number().int().describe("MIDI velocity 1-127 (0 = note-off, rejected)")
+  velocity: external_exports.number().int().describe("MIDI velocity 1-127 (0 = note-off, rejected)"),
+  mute: external_exports.boolean().optional().describe("mute this note (default false)"),
+  probability: external_exports.number().optional().describe("0.0-1.0 chance the note plays each pass (default 1.0)"),
+  velocity_deviation: external_exports.number().optional().describe("random velocity range added on playback, -127..127 (default 0)"),
+  release_velocity: external_exports.number().optional().describe("0-127 (default 64)")
 });
 var rhythmStepSchema = external_exports.object({
   start_beat: external_exports.number(),
@@ -24982,6 +24986,32 @@ function validateNote(note, index) {
   if (duration_beat <= 0) {
     throw new Error(`note[${index}]: duration_beat ${duration_beat} must be > 0`);
   }
+  validateNoteExtras(note, `note[${index}]`);
+}
+function validateNoteExtras(n, label) {
+  if (n.probability !== void 0 && !(n.probability >= 0 && n.probability <= 1)) {
+    throw new Error(`${label}: probability ${n.probability} out of range 0.0-1.0`);
+  }
+  if (n.velocity_deviation !== void 0 && !(n.velocity_deviation >= -127 && n.velocity_deviation <= 127)) {
+    throw new Error(
+      `${label}: velocity_deviation ${n.velocity_deviation} out of range -127..127`
+    );
+  }
+  if (n.release_velocity !== void 0 && !(n.release_velocity >= 0 && n.release_velocity <= 127)) {
+    throw new Error(`${label}: release_velocity ${n.release_velocity} out of range 0-127`);
+  }
+}
+function flattenNoteExtended(n) {
+  return [
+    i(n.pitch),
+    f(quantizeTime(n.start_beat)),
+    f(quantizeTime(n.duration_beat)),
+    i(n.velocity),
+    n.mute ?? false,
+    f(n.probability ?? 1),
+    f(n.velocity_deviation ?? 0),
+    f(n.release_velocity ?? 64)
+  ];
 }
 async function createClipImpl(trackIndex, clipSlot, lengthBeats, notes, name) {
   if (lengthBeats <= 0) {
@@ -25001,17 +25031,8 @@ async function createClipImpl(trackIndex, clipSlot, lengthBeats, notes, name) {
   if (name) c.send("/live/clip/set/name", i(trackIndex), i(clipSlot), name);
   if (noteList.length) {
     const flat = [i(trackIndex), i(clipSlot)];
-    for (const n of noteList) {
-      flat.push(
-        i(n.pitch),
-        f(quantizeTime(n.start_beat)),
-        f(quantizeTime(n.duration_beat)),
-        i(n.velocity),
-        false
-        // mute
-      );
-    }
-    c.send("/live/clip/add/notes", ...flat);
+    for (const n of noteList) flat.push(...flattenNoteExtended(n));
+    c.send("/live/clip/add/notes_extended", ...flat);
     await sleep(LIVE_TICK_MS);
   }
   return {
@@ -27051,7 +27072,7 @@ function registerTools(server) {
   server.registerTool(
     "get_notes",
     {
-      description: "Read notes from an existing clip, optionally filtered by pitch/time range. Default range covers everything. Filtering is inclusive of start, exclusive of (start+span).",
+      description: "Read notes from an existing clip, optionally filtered by pitch/time range. Default range covers everything. Filtering is inclusive of start, exclusive of (start+span). Each note includes its note_id plus mute / probability / velocity_deviation / release_velocity \u2014 pass the note_id to set_note_properties to edit individual notes.",
       inputSchema: {
         track_index: external_exports.number().int(),
         clip_slot: external_exports.number().int(),
@@ -27063,7 +27084,7 @@ function registerTools(server) {
     },
     async ({ track_index, clip_slot, start_pitch, pitch_span, start_beat, beat_span }) => {
       const c = await getClient();
-      const reply = await c.query("/live/clip/get/notes", [
+      const reply = await c.query("/live/clip/get/notes_extended", [
         i(track_index),
         i(clip_slot),
         i(start_pitch),
@@ -27072,12 +27093,17 @@ function registerTools(server) {
         f(beat_span)
       ]);
       const notes = [];
-      for (let k = 2; k < reply.length; k += 5) {
+      for (let k = 2; k + 8 < reply.length; k += 9) {
         notes.push({
-          pitch: asNum(reply[k]),
-          start_beat: asNum(reply[k + 1]),
-          duration_beat: asNum(reply[k + 2]),
-          velocity: asNum(reply[k + 3])
+          note_id: asNum(reply[k]),
+          pitch: asNum(reply[k + 1]),
+          start_beat: asNum(reply[k + 2]),
+          duration_beat: asNum(reply[k + 3]),
+          velocity: asNum(reply[k + 4]),
+          mute: asBool(reply[k + 5]),
+          probability: asNum(reply[k + 6]),
+          velocity_deviation: asNum(reply[k + 7]),
+          release_velocity: asNum(reply[k + 8])
         });
       }
       return jsonResult(notes);
@@ -27086,7 +27112,7 @@ function registerTools(server) {
   server.registerTool(
     "add_notes_to_clip",
     {
-      description: "Add notes to an existing clip without removing what's there. Use to iterate (denser bassline, ghost notes). For a full replacement use delete_clip + create_clip.",
+      description: "Add notes to an existing clip without removing what's there. Use to iterate (denser bassline, ghost notes). Notes may carry the optional per-note properties (probability, velocity_deviation, release_velocity, mute). For a full replacement use delete_clip + create_clip.",
       inputSchema: {
         track_index: external_exports.number().int(),
         clip_slot: external_exports.number().int(),
@@ -27098,16 +27124,8 @@ function registerTools(server) {
       notes.forEach((n, idx) => validateNote(n, idx));
       const c = await getClient();
       const flat = [i(track_index), i(clip_slot)];
-      for (const n of notes) {
-        flat.push(
-          i(n.pitch),
-          f(quantizeTime(n.start_beat)),
-          f(quantizeTime(n.duration_beat)),
-          i(n.velocity),
-          false
-        );
-      }
-      c.send("/live/clip/add/notes", ...flat);
+      for (const n of notes) flat.push(...flattenNoteExtended(n));
+      c.send("/live/clip/add/notes_extended", ...flat);
       await sleep(LIVE_TICK_MS);
       return jsonResult({ track_index, clip_slot, added_count: notes.length });
     }
@@ -27138,6 +27156,109 @@ function registerTools(server) {
       );
       await sleep(LIVE_TICK_MS);
       return jsonResult({ track_index, clip_slot });
+    }
+  );
+  server.registerTool(
+    "set_note_properties",
+    {
+      description: "Edit individual existing notes by note_id \u2014 change pitch, timing, velocity, or the Live 11+ per-note properties: probability (0.0-1.0 chance of playing), velocity_deviation (random velocity range), release_velocity, mute. **Call get_notes first to read each note's note_id.** Only the fields you pass are changed; everything else is preserved. Each modification needs note_id. Examples: humanize a hi-hat ({note_id, velocity_deviation: 15}), make a ghost note occasional ({note_id, probability: 0.4}), mute a note ({note_id, mute: true}).",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a MIDI clip"),
+        modifications: external_exports.array(
+          external_exports.object({
+            note_id: external_exports.number().int().describe("from get_notes"),
+            pitch: external_exports.number().int().optional(),
+            start_beat: external_exports.number().optional(),
+            duration_beat: external_exports.number().optional(),
+            velocity: external_exports.number().optional().describe("1-127"),
+            mute: external_exports.boolean().optional(),
+            probability: external_exports.number().optional().describe("0.0-1.0"),
+            velocity_deviation: external_exports.number().optional().describe("-127..127"),
+            release_velocity: external_exports.number().optional().describe("0-127")
+          })
+        ).describe("one entry per note to edit; each must include note_id")
+      }
+    },
+    async ({ track_index, clip_slot, modifications }) => {
+      if (!modifications.length) throw new Error("modifications list is empty");
+      const c = await getClient();
+      const reply = await c.query("/live/clip/get/notes_extended", [
+        i(track_index),
+        i(clip_slot),
+        i(ALL_PITCH_START),
+        i(ALL_PITCH_SPAN),
+        f(ALL_BEAT_START),
+        f(ALL_BEAT_SPAN)
+      ]);
+      const byId = /* @__PURE__ */ new Map();
+      for (let k = 2; k + 8 < reply.length; k += 9) {
+        byId.set(asNum(reply[k]), {
+          pitch: asNum(reply[k + 1]),
+          start: asNum(reply[k + 2]),
+          dur: asNum(reply[k + 3]),
+          vel: asNum(reply[k + 4]),
+          mute: asBool(reply[k + 5]),
+          prob: asNum(reply[k + 6]),
+          vdev: asNum(reply[k + 7]),
+          relvel: asNum(reply[k + 8])
+        });
+      }
+      const flat = [i(track_index), i(clip_slot)];
+      const notFound = [];
+      let count = 0;
+      for (const mod of modifications) {
+        const cur = byId.get(mod.note_id);
+        if (!cur) {
+          notFound.push(mod.note_id);
+          continue;
+        }
+        const pitch = mod.pitch ?? cur.pitch;
+        const start = mod.start_beat ?? cur.start;
+        const dur = mod.duration_beat ?? cur.dur;
+        const vel = mod.velocity ?? cur.vel;
+        const mute = mod.mute ?? cur.mute;
+        const prob = mod.probability ?? cur.prob;
+        const vdev = mod.velocity_deviation ?? cur.vdev;
+        const relvel = mod.release_velocity ?? cur.relvel;
+        if (!(pitch >= 0 && pitch <= 127)) {
+          throw new Error(`note ${mod.note_id}: pitch ${pitch} out of range 0-127`);
+        }
+        if (!(vel >= 1 && vel <= 127)) {
+          throw new Error(`note ${mod.note_id}: velocity ${vel} out of range 1-127`);
+        }
+        if (start < 0) throw new Error(`note ${mod.note_id}: start_beat must be >= 0`);
+        if (dur <= 0) throw new Error(`note ${mod.note_id}: duration_beat must be > 0`);
+        validateNoteExtras(
+          { probability: prob, velocity_deviation: vdev, release_velocity: relvel },
+          `note ${mod.note_id}`
+        );
+        flat.push(
+          i(mod.note_id),
+          i(pitch),
+          f(quantizeTime(start)),
+          f(quantizeTime(dur)),
+          f(vel),
+          mute,
+          f(prob),
+          f(vdev),
+          f(relvel)
+        );
+        count++;
+      }
+      if (count === 0) {
+        throw new Error(
+          `no matching notes (note_ids not found: ${notFound.join(", ")}). Call get_notes to read current note_ids first.`
+        );
+      }
+      c.send("/live/clip/apply_note_modifications", ...flat);
+      await sleep(LIVE_TICK_MS);
+      return jsonResult({
+        track_index,
+        clip_slot,
+        modified_count: count,
+        not_found: notFound
+      });
     }
   );
   server.registerTool(
