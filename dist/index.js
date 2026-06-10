@@ -25619,6 +25619,150 @@ function registerTools(server) {
       return jsonResult({ beat, action: "set" });
     }
   );
+  async function listLocatorsImpl(c) {
+    const reply = await c.query("/live/song/get/cue_points");
+    const locators = [];
+    for (let k = 0; k + 1 < reply.length; k += 2) {
+      locators.push({
+        index: k / 2,
+        name: asStr(reply[k]),
+        time_beats: asNum(reply[k + 1])
+      });
+    }
+    return locators;
+  }
+  function resolveLocator(locators, index, name) {
+    if (index === void 0 === (name === void 0)) {
+      throw new Error("provide exactly one of index or name");
+    }
+    const hit = index !== void 0 ? locators.find((l) => l.index === index) : locators.find((l) => l.name === name);
+    if (!hit) {
+      const have = locators.map((l) => `${l.index}:${JSON.stringify(l.name)}`).join(", ");
+      throw new Error(
+        `locator ${index !== void 0 ? index : JSON.stringify(name)} not found. Existing locators: ${have || "(none)"}. Use list_locators.`
+      );
+    }
+    return hit;
+  }
+  server.registerTool(
+    "list_locators",
+    {
+      description: "List the Arrangement's locators (cue-point markers): index, name, and position in beats, sorted by time. Locators label sections of the timeline (Intro, Drop, Verse 2). Pass the index or name to jump_to_locator / delete_locator.",
+      inputSchema: {}
+    },
+    async () => {
+      const c = await getClient();
+      const locators = await listLocatorsImpl(c);
+      locators.sort((a, b) => a.time_beats - b.time_beats);
+      return jsonResult(locators);
+    }
+  );
+  server.registerTool(
+    "add_locator",
+    {
+      description: "Add a locator (cue-point marker) at a position on the Arrangement timeline, optionally named \u2014 use after building an arrangement to label its sections (Intro, Drop, Verse 2). If a locator already exists at that beat it is kept (and renamed if a name is given). Implementation note: Live only creates locators at the playhead, so this briefly moves the playhead and restores it \u2014 if the transport is playing you'll hear a jump.",
+      inputSchema: {
+        time_beats: external_exports.number().describe("position in beats from arrangement start (>= 0)"),
+        name: external_exports.string().optional().describe("optional locator name")
+      }
+    },
+    async ({ time_beats, name }) => {
+      if (time_beats < 0) throw new Error(`time_beats ${time_beats} must be >= 0`);
+      const c = await getClient();
+      const before = await listLocatorsImpl(c);
+      const existing = before.find((l) => Math.abs(l.time_beats - time_beats) < 1e-6);
+      if (existing) {
+        if (name !== void 0 && name !== existing.name) {
+          c.send("/live/song/cue_point/set/name", i(existing.index), name);
+        }
+        return jsonResult({
+          index: existing.index,
+          name: name ?? existing.name,
+          time_beats: existing.time_beats,
+          existed: true
+        });
+      }
+      const posReply = await c.query("/live/song/get/current_song_time");
+      const originalPos = asNum(posReply[0]);
+      c.send("/live/song/set/current_song_time", f(time_beats));
+      await sleep(LIVE_TICK_MS);
+      c.send("/live/song/cue_point/add_or_delete");
+      await sleep(LIVE_TICK_MS);
+      const after = await listLocatorsImpl(c);
+      const created = after.find((l) => Math.abs(l.time_beats - time_beats) < 1e-6);
+      if (!created) {
+        c.send("/live/song/set/current_song_time", f(originalPos));
+        throw new Error(
+          `locator did not appear at beat ${time_beats} (cue list unchanged). Check the AbletonOSC log.`
+        );
+      }
+      if (name !== void 0) {
+        c.send("/live/song/cue_point/set/name", i(created.index), name);
+      }
+      c.send("/live/song/set/current_song_time", f(originalPos));
+      return jsonResult({
+        index: created.index,
+        name: name ?? created.name,
+        time_beats: created.time_beats,
+        existed: false
+      });
+    }
+  );
+  server.registerTool(
+    "delete_locator",
+    {
+      description: "Delete a locator (cue-point marker) by index or name (pass exactly one \u2014 see list_locators). Briefly moves the playhead to the locator and restores it (Live deletes cues at the playhead).",
+      inputSchema: {
+        index: external_exports.number().int().optional().describe("locator index from list_locators"),
+        name: external_exports.string().optional().describe("locator name from list_locators")
+      }
+    },
+    async ({ index, name }) => {
+      const c = await getClient();
+      const locators = await listLocatorsImpl(c);
+      const target = resolveLocator(locators, index, name);
+      const posReply = await c.query("/live/song/get/current_song_time");
+      const originalPos = asNum(posReply[0]);
+      c.send("/live/song/set/current_song_time", f(target.time_beats));
+      await sleep(LIVE_TICK_MS);
+      c.send("/live/song/cue_point/add_or_delete");
+      await sleep(LIVE_TICK_MS);
+      c.send("/live/song/set/current_song_time", f(originalPos));
+      const after = await listLocatorsImpl(c);
+      const stillThere = after.some((l) => Math.abs(l.time_beats - target.time_beats) < 1e-6);
+      if (stillThere) {
+        throw new Error(
+          `locator at beat ${target.time_beats} still present after delete. Check the AbletonOSC log.`
+        );
+      }
+      return jsonResult({
+        name: target.name,
+        time_beats: target.time_beats,
+        action: "deleted"
+      });
+    }
+  );
+  server.registerTool(
+    "jump_to_locator",
+    {
+      description: "Move the playhead to a locator by index or name (pass exactly one \u2014 see list_locators). While the transport is playing, the jump obeys the global launch quantization; while stopped it moves the insert marker immediately.",
+      inputSchema: {
+        index: external_exports.number().int().optional().describe("locator index from list_locators"),
+        name: external_exports.string().optional().describe("locator name from list_locators")
+      }
+    },
+    async ({ index, name }) => {
+      const c = await getClient();
+      const locators = await listLocatorsImpl(c);
+      const target = resolveLocator(locators, index, name);
+      c.send("/live/song/cue_point/jump", i(target.index));
+      return jsonResult({
+        name: target.name,
+        time_beats: target.time_beats,
+        action: "jumped"
+      });
+    }
+  );
   server.registerTool(
     "set_metronome",
     {

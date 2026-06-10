@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 118 tools
+ * Live integration test: spawn the built MCP server and exercise the 122 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -354,6 +354,37 @@ try {
     assert(typeof u.can_undo_more === "boolean", "undo missing can_undo_more");
     const r = await call("redo");
     assert(typeof r.can_redo_more === "boolean", "redo missing can_redo_more");
+  });
+
+  // ---- locators (cue points) ----
+  await step("locators: add + rename-on-existing + jump + delete", async () => {
+    const baseline = (await call("list_locators")).length;
+    await call("set_song_position", { beat: 0 });
+
+    const added = await call("add_locator", { time_beats: 8, name: "ZZ Loc" });
+    assert(added.existed === false, "locator unexpectedly existed");
+    assert(Math.abs(added.time_beats - 8) < 1e-6, `locator time ${added.time_beats}`);
+
+    // playhead restored after the add's move-toggle-restore dance
+    const pos = await call("get_playback_state");
+    assert(Math.abs(pos.current_beat - 0) < 1e-6, `playhead not restored (at ${pos.current_beat})`);
+
+    const listed = await call("list_locators");
+    assert(listed.length === baseline + 1, `expected ${baseline + 1} locators, got ${listed.length}`);
+    assert(listed.some((l) => l.name === "ZZ Loc"), "named locator not in list");
+
+    // adding at the same beat = keep + rename, not toggle-delete
+    const again = await call("add_locator", { time_beats: 8, name: "ZZ Loc 2" });
+    assert(again.existed === true, "second add should report existed");
+    assert((await call("list_locators")).length === baseline + 1, "duplicate add changed count");
+
+    await call("jump_to_locator", { name: "ZZ Loc 2" });
+    const pos2 = await call("get_playback_state");
+    assert(Math.abs(pos2.current_beat - 8) < 1e-6, `jump landed at ${pos2.current_beat}, not 8`);
+
+    await call("delete_locator", { name: "ZZ Loc 2" });
+    assert((await call("list_locators")).length === baseline, "locator not deleted");
+    await call("set_song_position", { beat: 0 });
   });
 
   // ---- arrangement ----
