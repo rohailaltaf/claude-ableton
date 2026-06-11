@@ -26767,6 +26767,114 @@ function registerTools(server) {
       return jsonResult({ track_index, mode });
     }
   );
+  async function setTrackRoutingImpl(direction, trackIndex, type, channel) {
+    if (type === void 0 && channel === void 0) {
+      throw new Error("provide type, channel, or both");
+    }
+    const c = await getClient();
+    const result = { track_index: trackIndex };
+    if (type !== void 0) {
+      const avail = (await c.query(`/live/track/get/available_${direction}_routing_types`, [i(trackIndex)])).slice(1).map(asStr);
+      if (!avail.includes(type)) {
+        throw new Error(
+          `${direction} routing type ${JSON.stringify(type)} not available on track ${trackIndex}. Available: ${avail.map((t) => JSON.stringify(t)).join(", ")}`
+        );
+      }
+      c.send(`/live/track/set/${direction}_routing_type`, i(trackIndex), type);
+      await sleep(LIVE_TICK_MS);
+      const got = asStr(
+        (await c.query(`/live/track/get/${direction}_routing_type`, [i(trackIndex)]))[1]
+      );
+      if (got !== type) {
+        throw new Error(
+          `${direction} routing type did not take (wanted ${JSON.stringify(type)}, track reports ${JSON.stringify(got)})`
+        );
+      }
+      result.type = got;
+    }
+    if (channel !== void 0) {
+      const avail = (await c.query(`/live/track/get/available_${direction}_routing_channels`, [i(trackIndex)])).slice(1).map(asStr);
+      if (!avail.includes(channel)) {
+        throw new Error(
+          `${direction} routing channel ${JSON.stringify(channel)} not available on track ${trackIndex}${type !== void 0 ? ` after switching type to ${JSON.stringify(type)}` : ""}. Available: ${avail.map((ch) => JSON.stringify(ch)).join(", ")}`
+        );
+      }
+      c.send(`/live/track/set/${direction}_routing_channel`, i(trackIndex), channel);
+      await sleep(LIVE_TICK_MS);
+      const got = asStr(
+        (await c.query(`/live/track/get/${direction}_routing_channel`, [i(trackIndex)]))[1]
+      );
+      if (got !== channel) {
+        throw new Error(
+          `${direction} routing channel did not take (wanted ${JSON.stringify(channel)}, track reports ${JSON.stringify(got)})`
+        );
+      }
+      result.channel = got;
+    }
+    return result;
+  }
+  server.registerTool(
+    "get_track_routing",
+    {
+      description: "Read a track's I/O routing: current input/output type + channel and every available option (all display names, usable directly with set_track_input_routing / set_track_output_routing). Types are sources/destinations \u2014 input: 'Ext. In', 'Resampling', 'No Input', or another track's name; output: 'Master', 'Sends Only', 'Ext. Out', or another track's name. Channels depend on the selected type (e.g. '1', '2', '1/2' for external; 'Track In' when targeting a track). A side that doesn't apply (e.g. input on a group track) comes back null.",
+      inputSchema: { track_index: external_exports.number().int() }
+    },
+    async ({ track_index }) => {
+      const c = await getClient();
+      async function side(direction) {
+        try {
+          const types = (await c.query(`/live/track/get/available_${direction}_routing_types`, [i(track_index)])).slice(1).map(asStr);
+          const channels = (await c.query(`/live/track/get/available_${direction}_routing_channels`, [
+            i(track_index)
+          ])).slice(1).map(asStr);
+          const curType = asStr(
+            (await c.query(`/live/track/get/${direction}_routing_type`, [i(track_index)]))[1]
+          );
+          const curChannel = asStr(
+            (await c.query(`/live/track/get/${direction}_routing_channel`, [i(track_index)]))[1]
+          );
+          return {
+            type: curType,
+            channel: curChannel,
+            available_types: types,
+            available_channels: channels
+          };
+        } catch (e) {
+          if (e instanceof QueryTimeout) return null;
+          throw e;
+        }
+      }
+      return jsonResult({
+        track_index,
+        input: await side("input"),
+        output: await side("output")
+      });
+    }
+  );
+  server.registerTool(
+    "set_track_input_routing",
+    {
+      description: "Set a track's input source by display name (see get_track_routing for options): type is the source ('Ext. In', 'Resampling', 'No Input', or another track's name \u2014 e.g. point an audio track's input at a bus track to resample it), channel is which channel of that source. Sets type before channel (the channel list refreshes when type changes) and verifies each write took, erroring with the available options on a bad name.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        type: external_exports.string().optional().describe("input routing type display name"),
+        channel: external_exports.string().optional().describe("input routing channel display name")
+      }
+    },
+    async ({ track_index, type, channel }) => jsonResult(await setTrackRoutingImpl("input", track_index, type, channel))
+  );
+  server.registerTool(
+    "set_track_output_routing",
+    {
+      description: "Set where a track's output goes, by display name (see get_track_routing for options): type is the destination ('Master', 'Sends Only', 'Ext. Out', or another track's name \u2014 routing into a track is how you build submix busses and parallel-processing chains; the target must be an audio track). channel picks the input on that destination (usually 'Track In'). Sets type before channel and verifies each write took, erroring with the available options on a bad name.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        type: external_exports.string().optional().describe("output routing type display name"),
+        channel: external_exports.string().optional().describe("output routing channel display name")
+      }
+    },
+    async ({ track_index, type, channel }) => jsonResult(await setTrackRoutingImpl("output", track_index, type, channel))
+  );
   server.registerTool(
     "get_device_parameters",
     {

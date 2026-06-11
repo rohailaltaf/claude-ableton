@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 122 tools
+ * Live integration test: spawn the built MCP server and exercise the 125 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -420,6 +420,35 @@ try {
     // restore
     await call("set_track_monitoring", { track_index: keysIdx, mode: "auto" });
     await call("set_track_arm", { track_index: keysIdx, armed: false });
+  });
+
+  // ---- track routing (I/O) ----
+  await step("track routing: read + route-to-bus + bad-name rejection + restore", async () => {
+    const r0 = await call("get_track_routing", { track_index: keysIdx });
+    assert(r0.output && r0.output.type, "no output routing section");
+    assert(Array.isArray(r0.output.available_types) && r0.output.available_types.length > 0, "no available output types");
+    const originalOut = r0.output.type;
+
+    const busIdx = (await call("create_audio_track", { name: "ZZ RouteBus" })).track_index;
+    const r1 = await call("get_track_routing", { track_index: keysIdx });
+    const busType = r1.output.available_types.find((t) => t.includes("ZZ RouteBus"));
+    assert(busType, `bus track not in available output types: ${JSON.stringify(r1.output.available_types)}`);
+
+    const setRes = await call("set_track_output_routing", { track_index: keysIdx, type: busType });
+    assert(setRes.type === busType, `output type not set (got ${setRes.type})`);
+    const r2 = await call("get_track_routing", { track_index: keysIdx });
+    assert(r2.output.type === busType, "read-back after routing change mismatched");
+
+    let rejected = false;
+    try {
+      await call("set_track_output_routing", { track_index: keysIdx, type: "ZZ Bogus Nowhere" });
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, "bad routing type was not rejected");
+
+    await call("set_track_output_routing", { track_index: keysIdx, type: originalOut });
+    await call("delete_track", { track_index: busIdx });
   });
 
   // ---- MIDI effects (loads ahead of instrument; device idx shifts) ----
