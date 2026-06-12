@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 125 tools
+ * Live integration test: spawn the built MCP server and exercise the 130 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -449,6 +449,40 @@ try {
 
     await call("set_track_output_routing", { track_index: keysIdx, type: originalOut });
     await call("delete_track", { track_index: busIdx });
+  });
+
+  // ---- v0.1.16 small stuff: scene color, fold guard, track state, clip state, BTA ----
+  await step("scene color + fold rejection + track/clip state + back_to_arrangement", async () => {
+    // scene color round-trip via list_scenes (colorless scenes read as null and
+    // can't be restored to colorless — only restore when there was a color)
+    const origColorIdx = (await call("list_scenes"))[0].color_index;
+    await call("set_scene_color", { scene_index: 0, color_index: 10 });
+    const colored = (await call("list_scenes"))[0];
+    assert(colored.color_index === 10, `scene color_index not 10 (got ${colored.color_index})`);
+    if (typeof origColorIdx === "number") {
+      await call("set_scene_color", { scene_index: 0, color_index: origColorIdx });
+    }
+
+    // fold on a non-group track must reject cleanly
+    let foldRejected = false;
+    try { await call("set_track_fold", { track_index: keysIdx, folded: true }); } catch { foldRejected = true; }
+    assert(foldRejected, "set_track_fold on a regular track was not rejected");
+
+    // track state shape
+    const ts = await call("get_track_state", { track_index: keysIdx });
+    for (const k of ["output_meter_level", "output_meter_left", "output_meter_right", "playing_slot_index", "fired_slot_index"]) {
+      assert(typeof ts[k] === "number", `get_track_state missing ${k}`);
+    }
+
+    // clip state on the keys MIDI clip
+    const cs = await call("get_clip_state", { track_index: keysIdx, clip_slot: 0 });
+    assert(cs.type === "midi", `expected midi clip, got ${cs.type}`);
+    assert(cs.file_path === null, "MIDI clip should have null file_path");
+    assert(typeof cs.is_playing === "boolean" && typeof cs.length_beats === "number", "clip state shape wrong");
+
+    // back_to_arrangement
+    const bta = await call("back_to_arrangement");
+    assert(typeof bta.was_overridden === "boolean", "no was_overridden");
   });
 
   // ---- MIDI effects (loads ahead of instrument; device idx shifts) ----

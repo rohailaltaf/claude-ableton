@@ -25369,10 +25369,13 @@ function registerTools(server) {
           const tsDen = asNum((await c.query("/live/scene/get/time_signature_denominator", [i(k)]))[1]);
           timeSignature = { numerator: tsNum, denominator: tsDen };
         }
+        const colorIdxReply = await c.query("/live/scene/get/color_index", [i(k)]);
+        const colorIdxNum = Number(colorIdxReply[1]);
         scenes.push({
           scene_index: k,
           name: asStr(nameReply[1]),
           is_empty: asBool(emptyReply[1]),
+          color_index: Number.isFinite(colorIdxNum) ? colorIdxNum : null,
           tempo,
           tempo_enabled: tempoEnabled,
           time_signature: timeSignature,
@@ -25487,6 +25490,32 @@ function registerTools(server) {
         denominator: enabled ? denominator : null,
         time_signature_enabled: enabled
       });
+    }
+  );
+  server.registerTool(
+    "set_scene_color",
+    {
+      description: "Set a scene's color. Provide either color (packed RGB 0xRRGGBB \u2014 Live snaps to the nearest swatch) or color_index (0-69, Live's palette). Pass exactly one. Read back via list_scenes (color_index is null on scenes that have never been colored; once set it can't be returned to colorless via the API).",
+      inputSchema: {
+        scene_index: external_exports.number().int(),
+        color: external_exports.number().int().optional().describe("packed RGB integer 0xRRGGBB"),
+        color_index: external_exports.number().int().optional().describe("palette index 0-69")
+      }
+    },
+    async ({ scene_index, color, color_index }) => {
+      if (color === void 0 === (color_index === void 0)) {
+        throw new Error("provide exactly one of color (RGB) or color_index (0-69)");
+      }
+      const c = await getClient();
+      if (color_index !== void 0) {
+        if (color_index < 0 || color_index > 69) {
+          throw new Error(`color_index ${color_index} out of range 0-69`);
+        }
+        c.send("/live/scene/set/color_index", i(scene_index), i(color_index));
+        return jsonResult({ scene_index, color_index, action: "color set" });
+      }
+      c.send("/live/scene/set/color", i(scene_index), i(color));
+      return jsonResult({ scene_index, color, action: "color set" });
     }
   );
   server.registerTool(
@@ -25892,6 +25921,20 @@ function registerTools(server) {
       }
       c.send("/live/track/stop_all_clips", i(track_index));
       return jsonResult({ scope: "track", track_index, action: "stopped" });
+    }
+  );
+  server.registerTool(
+    "back_to_arrangement",
+    {
+      description: "Return playback control to the Arrangement (Live's 'Back to Arrangement' button). Firing Session clips overrides the corresponding Arrangement tracks \u2014 the button lights orange \u2014 and they stay overridden until this is called. Use after auditioning Session clips so the written Arrangement plays again. Returns was_overridden (false = nothing was overriding).",
+      inputSchema: {}
+    },
+    async () => {
+      const c = await getClient();
+      const beforeReply = await c.query("/live/song/get/back_to_arranger");
+      const wasOverridden = asBool(beforeReply[0]);
+      c.send("/live/song/set/back_to_arranger", i(0));
+      return jsonResult({ was_overridden: wasOverridden, action: "returned to arrangement" });
     }
   );
   server.registerTool(
@@ -26614,6 +26657,43 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "get_clip_state",
+    {
+      description: "Read a single clip's live state and identity: type (midi/audio), is_playing, is_triggered (queued, waiting on launch quantization), is_recording, muted, playing_position (beats within the clip while playing), length_beats, and \u2014 for audio clips \u2014 the file_path of the underlying sample (null for MIDI).",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        clip_slot: external_exports.number().int().describe("must contain a clip")
+      }
+    },
+    async ({ track_index, clip_slot }) => {
+      const c = await getClient();
+      const args = [i(track_index), i(clip_slot)];
+      const isMidi = asBool((await c.query("/live/clip/get/is_midi_clip", args))[2]);
+      const isPlaying = asBool((await c.query("/live/clip/get/is_playing", args))[2]);
+      const isTriggered = asBool((await c.query("/live/clip/get/is_triggered", args))[2]);
+      const isRecording = asBool((await c.query("/live/clip/get/is_recording", args))[2]);
+      const muted = asBool((await c.query("/live/clip/get/muted", args))[2]);
+      const position = asNum((await c.query("/live/clip/get/playing_position", args))[2]);
+      const length = asNum((await c.query("/live/clip/get/length", args))[2]);
+      let filePath = null;
+      if (!isMidi) {
+        filePath = asStr((await c.query("/live/clip/get/file_path", args))[2]);
+      }
+      return jsonResult({
+        track_index,
+        clip_slot,
+        type: isMidi ? "midi" : "audio",
+        is_playing: isPlaying,
+        is_triggered: isTriggered,
+        is_recording: isRecording,
+        muted,
+        playing_position: position,
+        length_beats: length,
+        file_path: filePath
+      });
+    }
+  );
+  server.registerTool(
     "get_track_devices",
     {
       description: "List the devices (instrument + effects) on a track: index, name, type_id (0=audio_effect, 1=instrument, 2=midi_effect), class_name, and is_on (whether the device is enabled \u2014 false means bypassed; null if the device has no standard on/off switch). Use to discover device indices before delete_device / get_device_parameters / set_device_active.",
@@ -26728,6 +26808,50 @@ function registerTools(server) {
       }
       c.send("/live/track/set/color", i(track_index), i(color));
       return jsonResult({ track_index, color, action: "color set" });
+    }
+  );
+  server.registerTool(
+    "set_track_fold",
+    {
+      description: "Collapse or expand a Group track (the triangle in the track header). Only foldable tracks (groups) accept this \u2014 errors cleanly on regular tracks. Note: groups can't be *created* via the API (UI-only, Cmd+G); this only folds/unfolds existing ones.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        folded: external_exports.boolean().describe("true = collapsed, false = expanded")
+      }
+    },
+    async ({ track_index, folded }) => {
+      const c = await getClient();
+      const foldableReply = await c.query("/live/track/get/is_foldable", [i(track_index)]);
+      if (!asBool(foldableReply[1])) {
+        throw new Error(
+          `track ${track_index} is not foldable (only Group tracks fold). Use list_tracks to find group tracks.`
+        );
+      }
+      c.send("/live/track/set/fold_state", i(track_index), i(folded ? 1 : 0));
+      return jsonResult({ track_index, folded });
+    }
+  );
+  server.registerTool(
+    "get_track_state",
+    {
+      description: "Read a track's live state: output meters (output_meter_level mono summary plus left/right, 0.0-1.0 momentary values \u2014 ~0.92 corresponds to 0 dB; useful for 'is this track making sound / too hot?') and which Session slot is playing (playing_slot_index) or queued (fired_slot_index); -1 means none, -2 means stop-button. Meters only move while audio is actually playing.",
+      inputSchema: { track_index: external_exports.number().int() }
+    },
+    async ({ track_index }) => {
+      const c = await getClient();
+      const level = asNum((await c.query("/live/track/get/output_meter_level", [i(track_index)]))[1]);
+      const left = asNum((await c.query("/live/track/get/output_meter_left", [i(track_index)]))[1]);
+      const right = asNum((await c.query("/live/track/get/output_meter_right", [i(track_index)]))[1]);
+      const playing = asNum((await c.query("/live/track/get/playing_slot_index", [i(track_index)]))[1]);
+      const fired = asNum((await c.query("/live/track/get/fired_slot_index", [i(track_index)]))[1]);
+      return jsonResult({
+        track_index,
+        output_meter_level: level,
+        output_meter_left: left,
+        output_meter_right: right,
+        playing_slot_index: playing,
+        fired_slot_index: fired
+      });
     }
   );
   server.registerTool(
