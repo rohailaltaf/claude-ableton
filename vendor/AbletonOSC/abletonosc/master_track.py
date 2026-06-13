@@ -50,6 +50,65 @@ class MasterTrackHandler(AbletonOSCHandler):
             self.song.view.selected_track = self.song.master_track
             app.browser.load_item(node)
 
+        def master_load_browser_item(params: Tuple[Any]):
+            """Load a device-producing item from an arbitrary browser node onto
+            the Main track. Params: (node_name, path). node_name is an attribute
+            of app.browser (plugins, user_library, packs, max_for_live) — the
+            master equivalent of /live/track/load_browser_item, so third-party
+            mastering plugins and saved racks can land on the Main track (the
+            audio_effects-only master_load_audio_effect can't reach them)."""
+            node_name = str(params[0])
+            path = str(params[1])
+            if not path:
+                self.logger.warning("master_load_browser_item: empty path")
+                return
+            app = Live.Application.get_application()
+            try:
+                root = getattr(app.browser, node_name)
+            except (AttributeError, RuntimeError):
+                self.logger.warning(
+                    "master_load_browser_item: no browser node %r" % node_name
+                )
+                return
+            node = root
+            for segment in path.split("/"):
+                if not segment:
+                    continue
+                matched = None
+                for child in node.children:
+                    if child.name == segment:
+                        matched = child
+                        break
+                if matched is None:
+                    self.logger.warning(
+                        "master_load_browser_item: no child %r under %r"
+                        % (segment, node.name)
+                    )
+                    return
+                node = matched
+            if not node.is_loadable:
+                self.logger.warning(
+                    "master_load_browser_item: path %r is not loadable" % path
+                )
+                return
+            self.song.view.selected_track = self.song.master_track
+            app.browser.load_item(node)
+
+        def master_delete_device(params: Tuple[Any]):
+            """Delete a device from the Main track by index. master_track is a
+            Track, so Track.delete_device works on it — the regular
+            /live/track/delete_device can't address the master (it's outside
+            song.tracks)."""
+            device_index = int(params[0])
+            master = self.song.master_track
+            if device_index < 0 or device_index >= len(master.devices):
+                self.logger.warning(
+                    "master_delete_device: index %d out of range (0-%d)"
+                    % (device_index, len(master.devices) - 1)
+                )
+                return
+            master.delete_device(device_index)
+
         def master_get_num_devices(params: Tuple[Any] = ()):
             return (len(self.song.master_track.devices),)
 
@@ -78,6 +137,8 @@ class MasterTrackHandler(AbletonOSCHandler):
             self.song.master_track.mixer_device.volume.value = float(params[0])
 
         self.osc_server.add_handler("/live/master_track/load_audio_effect", master_load_audio_effect)
+        self.osc_server.add_handler("/live/master_track/load_browser_item", master_load_browser_item)
+        self.osc_server.add_handler("/live/master_track/delete_device", master_delete_device)
         self.osc_server.add_handler("/live/master_track/get/num_devices", master_get_num_devices)
         self.osc_server.add_handler("/live/master_track/get/devices/name", master_get_device_names)
         self.osc_server.add_handler("/live/master_track/get/device/parameters", master_get_device_parameters)

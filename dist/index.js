@@ -27381,6 +27381,59 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "load_browser_item_on_master",
+    {
+      description: "Load a third-party plugin (VST/VST3/AU) or a saved rack onto the Main (master) track \u2014 the master equivalent of load_browser_item, for mastering with your own tools (e.g. FabFilter Pro-L, an Ozone rack). Pair with the matching list_* tool: list_plugins \u2192 load_browser_item_on_master(node='plugins', path=...). For Live's built-in effects (Glue Compressor, Limiter, EQ Eight) use load_audio_effect_on_master instead. Devices append to the end of the chain.",
+      inputSchema: {
+        node: external_exports.enum(["plugins", "user_library", "packs", "max_for_live"]).describe("which browser node the path is from (matches the list_* tool)"),
+        path: external_exports.string().describe("slash-separated path from the matching list_* tool")
+      }
+    },
+    async ({ node, path: path2 }) => {
+      const c = await getClient();
+      const before = asNum((await c.query("/live/master_track/get/num_devices"))[0]);
+      c.send("/live/master_track/load_browser_item", node, path2);
+      const deadline = Date.now() + LOAD_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await sleep(LOAD_POLL_MS);
+        try {
+          const count = asNum((await c.query("/live/master_track/get/num_devices"))[0]);
+          if (count > before) {
+            return jsonResult({ node, path: path2, device_count: count, device_index: before });
+          }
+        } catch (e) {
+          if (e instanceof QueryTimeout) continue;
+          throw e;
+        }
+      }
+      throw new Error(
+        `Load timed out: ${node} item ${JSON.stringify(path2)} did not appear on the Main track within ${LOAD_TIMEOUT_MS / 1e3}s. Verify the path with list_${node}.`
+      );
+    }
+  );
+  server.registerTool(
+    "delete_master_device",
+    {
+      description: "Delete a device from the Main (master) track by index (see get_master_devices). Use to remove a wrongly-chosen mastering device. Destructive but Undo-able (Cmd+Z). The regular delete_device can't reach the Main track.",
+      inputSchema: {
+        device_index: external_exports.number().int().describe("index from get_master_devices")
+      }
+    },
+    async ({ device_index }) => {
+      const c = await getClient();
+      const before = asNum((await c.query("/live/master_track/get/num_devices"))[0]);
+      if (device_index < 0 || device_index >= before) {
+        throw new Error(
+          `device_index ${device_index} out of range (Main track has ${before} devices).`
+        );
+      }
+      c.send("/live/master_track/delete_device", i(device_index));
+      await sleep(LIVE_TICK_MS);
+      const after = asNum((await c.query("/live/master_track/get/num_devices"))[0]);
+      return jsonResult({ device_index, device_count: after, action: "deleted" });
+    }
+  );
+  server.registerTool(
     "get_master_devices",
     {
       description: "List the devices on the Main (master) track in chain order. Use to inspect the mastering chain and find device_index for get/set_master_device_parameter.",

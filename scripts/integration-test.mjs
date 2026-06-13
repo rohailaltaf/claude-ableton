@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 130 tools
+ * Live integration test: spawn the built MCP server and exercise the 132 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -549,34 +549,57 @@ try {
     assert(r.length > returnIdx, "send missing");
   });
 
-  // ---- master ----
+  // ---- master (self-cleaning: restores the Main track's original device count) ----
+  const masterDevsBefore = (await call("get_master_devices")).length;
+  let masterGlueIdx = -1;
   await step("load_audio_effect_on_master Glue Compressor", async () => {
     const r = await call("load_audio_effect_on_master", { effect_path: "Glue Compressor" });
     assert(r.device_count >= 1, "no master device");
+    masterGlueIdx = r.device_count - 1;
   });
   await step("get_master_devices", async () => {
     const r = await call("get_master_devices");
     assert(r.length >= 1, "no master devices");
   });
   await step("get_master_device_parameters", async () => {
-    const r = await call("get_master_device_parameters", { device_index: 0 });
+    const r = await call("get_master_device_parameters", { device_index: masterGlueIdx });
     assert(r.length > 0, "no master params");
   });
   await step("set_master_device_parameter", async () => {
-    const params = await call("get_master_device_parameters", { device_index: 0 });
+    const params = await call("get_master_device_parameters", { device_index: masterGlueIdx });
     const p = params.find((x) => /threshold/i.test(x.name)) ?? params[0];
     const out = await call("set_master_device_parameter", {
-      device_index: 0,
+      device_index: masterGlueIdx,
       parameter_index: p.parameter_index,
       value: p.min + (p.max - p.min) * 0.5,
     });
     assert(typeof out.value === "number", "no value back");
+  });
+  await step("load_browser_item_on_master + delete_master_device round-trip", async () => {
+    const before = (await call("get_master_devices")).length;
+    // Load a Max for Live audio effect onto the master (works without 3rd-party plugins).
+    await call("load_browser_item_on_master", { node: "max_for_live", path: "Max Audio Effect/LFO" });
+    const after = (await call("get_master_devices")).length;
+    assert(after === before + 1, `master device not added (was ${before}, now ${after})`);
+    const del = await call("delete_master_device", { device_index: after - 1 });
+    assert(del.device_count === before, `delete didn't restore count (got ${del.device_count})`);
   });
   await step("get_master_volume", async () => {
     const r = await call("get_master_volume");
     assert(typeof r.volume === "number", "no volume");
   });
   await step("set_master_volume", () => call("set_master_volume", { volume: 0.85 }));
+  // Clean up: remove the Glue Compressor this block added, back to original count.
+  await step("master cleanup (delete added devices)", async () => {
+    let count = (await call("get_master_devices")).length;
+    let guard = 0;
+    while (count > masterDevsBefore && guard < 20) {
+      await call("delete_master_device", { device_index: count - 1 });
+      count = (await call("get_master_devices")).length;
+      guard++;
+    }
+    assert(count === masterDevsBefore, `master not restored (${count} vs ${masterDevsBefore})`);
+  });
 
   // ---- automation ----
   const steps = [
