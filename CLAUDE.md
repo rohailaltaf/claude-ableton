@@ -19,6 +19,11 @@ GitHub-natively: this one repo is **both the marketplace and the plugin**.
 - `.claude-plugin/marketplace.json` — marketplace; the plugin's `source` is `"./"`.
 - `scripts/` — `build.mjs` (esbuild), `vendor-remote-script.mjs`,
   `integration-test.mjs` (live 130-tool test), `list-tools.mjs`, `smoke-send.ts`.
+- `skills/` — bundled Agent Skills (auto-discovered, namespaced
+  `claude-ableton:<name>`). One per subdirectory (`SKILL.md` with
+  `name`/`description` frontmatter). Shipped: `mastering-chain`. When writing a
+  new skill, probe live Ableton for REAL device parameter names first (don't
+  guess them) and bump the plugin version so users receive it.
 
 ## Release runbook — do this when asked to "do a release"
 1. Make changes under `src/`.

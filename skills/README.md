@@ -1,12 +1,19 @@
-# Agent Skills (future)
+# Agent Skills
 
-This directory is reserved for bundled [Agent Skills](https://code.claude.com/docs/en/plugins#add-skills-to-your-plugin)
+Bundled [Agent Skills](https://code.claude.com/docs/en/plugins#add-skills-to-your-plugin)
 that ship with the `claude-ableton` plugin. Each skill is a subdirectory
-containing a `SKILL.md` (with YAML frontmatter `name`/`description`) plus any
-supporting `reference.md` or `scripts/`.
+containing a `SKILL.md` (YAML frontmatter `name`/`description` + the recipe).
+Skills are auto-discovered and namespaced as `claude-ableton:<skill-name>` —
+they trigger automatically when a request matches their description.
 
-Planned skills (not yet written): genre starters (e.g. lo-fi, hip-hop beats),
-sampling/chop workflows, and mixing/mastering recipes — higher-level recipes
-built on top of the MCP tools.
+## Shipped
 
-Skills are auto-discovered and namespaced as `claude-ableton:<skill-name>`.
+- **mastering-chain** — Glue Compressor → (EQ Eight) → Limiter on the Main
+  track with conservative, streaming-safe settings. Triggers on "master the
+  track", "make it louder", "polish the mix", etc.
+
+## Planned
+
+Genre starters (lo-fi, hip-hop beats), sampling/chop workflows, sidechain
+pumping, humanize/groove recipes — higher-level musical knowledge built on
+top of the MCP tools.

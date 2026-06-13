@@ -127,6 +127,16 @@ reachable off your machine.
 See [DESIGN.md](DESIGN.md) for conventions (pitch numbering, beat units, the
 instrument allowlist) and design decisions.
 
+## Bundled skills
+
+The plugin also ships [Agent Skills](skills/) — workflow recipes that trigger
+automatically on matching requests:
+
+- **mastering-chain** — say "master the track" or "make it louder" and Claude
+  builds a Glue Compressor → Limiter chain on the Main track with
+  conservative, streaming-safe settings (and won't stack a second limiter on
+  a chain you already have).
+
 ---
 
 ## Limitations
