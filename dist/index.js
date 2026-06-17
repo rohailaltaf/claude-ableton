@@ -27054,6 +27054,154 @@ function registerTools(server) {
     }
   );
   server.registerTool(
+    "get_rack_chains",
+    {
+      description: "Look inside a Rack device (Instrument/Audio Effect/MIDI Effect/Drum Rack) \u2014 racks are otherwise opaque in get_track_devices. Returns each chain's index, name, mute/solo, and the devices nested in it (with their nested_device_index), plus the rack's visible_macro_count. The rack's macro knobs are its own parameters after 'Device On' (use get_device_parameters / set_device_parameter on the rack for those); use get_chain_device_parameters / set_chain_device_parameter to reach a device INSIDE a chain. Returns is_rack=false for non-rack devices.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        device_index: external_exports.number().int().describe("a rack device on the track")
+      }
+    },
+    async ({ track_index, device_index }) => {
+      const c = await getClient();
+      const nReply = await c.query("/live/device/get/num_chains", [
+        i(track_index),
+        i(device_index)
+      ]);
+      const numChains = asNum(nReply[2]);
+      if (numChains === 0) {
+        return jsonResult({ track_index, device_index, is_rack: false, chains: [] });
+      }
+      const macroReply = await c.query("/live/device/get/visible_macro_count", [
+        i(track_index),
+        i(device_index)
+      ]);
+      const flat = (await c.query("/live/device/get/chains", [i(track_index), i(device_index)])).slice(2);
+      const chains = [];
+      for (let ci = 0; ci < numChains; ci++) {
+        const base = ci * 4;
+        const names = (await c.query("/live/device/chain/get/device_names", [
+          i(track_index),
+          i(device_index),
+          i(ci)
+        ])).slice(3);
+        chains.push({
+          chain_index: ci,
+          name: asStr(flat[base]),
+          mute: asBool(flat[base + 1]),
+          solo: asBool(flat[base + 2]),
+          devices: names.map((nm, ndi) => ({ nested_device_index: ndi, name: asStr(nm) }))
+        });
+      }
+      return jsonResult({
+        track_index,
+        device_index,
+        is_rack: true,
+        visible_macro_count: asNum(macroReply[2]),
+        chains
+      });
+    }
+  );
+  server.registerTool(
+    "get_chain_device_parameters",
+    {
+      description: "List the parameters of a device nested inside a rack chain (name/value/min/max) \u2014 the chain/device indices come from get_rack_chains. The nested device may itself be a rack, in which case its parameters are its macros.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        device_index: external_exports.number().int().describe("the rack device"),
+        chain_index: external_exports.number().int(),
+        nested_device_index: external_exports.number().int()
+      }
+    },
+    async ({ track_index, device_index, chain_index, nested_device_index }) => {
+      const c = await getClient();
+      const reply = (await c.query("/live/device/chain/get/parameters", [
+        i(track_index),
+        i(device_index),
+        i(chain_index),
+        i(nested_device_index)
+      ])).slice(4);
+      const params = [];
+      for (let k = 0; k + 3 < reply.length; k += 4) {
+        params.push({
+          parameter_index: k / 4,
+          name: asStr(reply[k]),
+          value: asNum(reply[k + 1]),
+          min: asNum(reply[k + 2]),
+          max: asNum(reply[k + 3])
+        });
+      }
+      return jsonResult(params);
+    }
+  );
+  server.registerTool(
+    "set_chain_device_parameter",
+    {
+      description: "Set a parameter on a device nested inside a rack chain \u2014 e.g. tweak the filter inside chain 2 of an instrument rack. Indices come from get_rack_chains + get_chain_device_parameters. Out-of-range values are clamped by Live.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        device_index: external_exports.number().int().describe("the rack device"),
+        chain_index: external_exports.number().int(),
+        nested_device_index: external_exports.number().int(),
+        parameter_index: external_exports.number().int(),
+        value: external_exports.number()
+      }
+    },
+    async ({ track_index, device_index, chain_index, nested_device_index, parameter_index, value }) => {
+      const c = await getClient();
+      c.send(
+        "/live/device/chain/set/parameter",
+        i(track_index),
+        i(device_index),
+        i(chain_index),
+        i(nested_device_index),
+        i(parameter_index),
+        f(value)
+      );
+      return jsonResult({
+        track_index,
+        device_index,
+        chain_index,
+        nested_device_index,
+        parameter_index,
+        value
+      });
+    }
+  );
+  server.registerTool(
+    "set_chain_mixer",
+    {
+      description: "Balance a rack chain's own mixer: volume (0.0-1.0, ~0.85 = 0 dB), pan (-1.0 to 1.0), mute, solo. Lets you blend the layers inside an instrument/effect rack (or balance drum-rack pad chains). Provide any subset; chain_index from get_rack_chains.",
+      inputSchema: {
+        track_index: external_exports.number().int(),
+        device_index: external_exports.number().int().describe("the rack device"),
+        chain_index: external_exports.number().int(),
+        volume: external_exports.number().optional().describe("0.0-1.0"),
+        pan: external_exports.number().optional().describe("-1.0 to 1.0"),
+        mute: external_exports.boolean().optional(),
+        solo: external_exports.boolean().optional()
+      }
+    },
+    async ({ track_index, device_index, chain_index, volume, pan, mute, solo }) => {
+      if (volume === void 0 && pan === void 0 && mute === void 0 && solo === void 0) {
+        throw new Error("provide at least one of volume, pan, mute, solo");
+      }
+      if (volume !== void 0 && !(volume >= 0 && volume <= 1)) {
+        throw new Error(`volume ${volume} out of range 0.0-1.0`);
+      }
+      if (pan !== void 0 && !(pan >= -1 && pan <= 1)) {
+        throw new Error(`pan ${pan} out of range -1.0 to 1.0`);
+      }
+      const c = await getClient();
+      const base = [i(track_index), i(device_index), i(chain_index)];
+      if (volume !== void 0) c.send("/live/device/chain/set/mixer", ...base, "volume", f(volume));
+      if (pan !== void 0) c.send("/live/device/chain/set/mixer", ...base, "panning", f(pan));
+      if (mute !== void 0) c.send("/live/device/chain/set/mixer", ...base, "mute", i(mute ? 1 : 0));
+      if (solo !== void 0) c.send("/live/device/chain/set/mixer", ...base, "solo", i(solo ? 1 : 0));
+      return jsonResult({ track_index, device_index, chain_index, volume, pan, mute, solo });
+    }
+  );
+  server.registerTool(
     "set_device_active",
     {
       description: "Enable or disable (bypass) a device \u2014 the on/off switch in the device's title bar. active=false bypasses it (signal passes through untouched); active=true re-enables it. Toggles the device's 'Device On' switch. Read the current state from get_track_devices (is_on field). Note: Live exposes is_active as read-only, so this drives the 'Device On' parameter, which is the writable equivalent.",

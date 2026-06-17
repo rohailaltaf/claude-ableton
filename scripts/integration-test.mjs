@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 132 tools
+ * Live integration test: spawn the built MCP server and exercise the 136 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -817,6 +817,42 @@ try {
   await step("list_drum_pads", async () => {
     const pads = await call("list_drum_pads", { track_index: drumsIdx, device_index: 0 });
     assert(Array.isArray(pads), "pads not array");
+  });
+  await step("rack: get_rack_chains + nested device param + chain mixer", async () => {
+    // A loaded drum kit is a rack device at index 0.
+    const rack = await call("get_rack_chains", { track_index: drumsIdx, device_index: 0 });
+    assert(rack.is_rack === true, "drum kit not detected as rack");
+    assert(typeof rack.visible_macro_count === "number", "no visible_macro_count");
+    assert(Array.isArray(rack.chains) && rack.chains.length >= 1, "no chains");
+    const ch0 = rack.chains[0];
+    assert(Array.isArray(ch0.devices) && ch0.devices.length >= 1, "chain 0 has no devices");
+    // nested device params
+    const params = await call("get_chain_device_parameters", {
+      track_index: drumsIdx, device_index: 0, chain_index: 0, nested_device_index: 0,
+    });
+    assert(Array.isArray(params) && params.length > 0, "no nested device params");
+    // Pick a continuous param (skip "Device On" and tiny/quantized ranges) so a
+    // midpoint set won't snap to an integer step.
+    const p = params.find((x) => x.name !== "Device On" && x.max - x.min > 2);
+    if (p) {
+      const target = p.min + (p.max - p.min) * 0.5;
+      await call("set_chain_device_parameter", {
+        track_index: drumsIdx, device_index: 0, chain_index: 0, nested_device_index: 0,
+        parameter_index: p.parameter_index, value: target,
+      });
+      const after = await call("get_chain_device_parameters", {
+        track_index: drumsIdx, device_index: 0, chain_index: 0, nested_device_index: 0,
+      });
+      const v = after[p.parameter_index].value;
+      assert(Math.abs(v - target) < (p.max - p.min) * 0.05 + 0.01,
+        `nested param '${p.name}' didn't take (target ${target}, got ${v})`);
+    }
+    // chain mixer (set + restore-ish; just assert no error)
+    await call("set_chain_mixer", { track_index: drumsIdx, device_index: 0, chain_index: 0, volume: 0.8, pan: 0 });
+    // bad input
+    let rej = false;
+    try { await call("set_chain_mixer", { track_index: drumsIdx, device_index: 0, chain_index: 0 }); } catch { rej = true; }
+    assert(rej, "empty set_chain_mixer not rejected");
   });
   // find a real sample file to load
   await step("find a sample file (deep)", async () => {

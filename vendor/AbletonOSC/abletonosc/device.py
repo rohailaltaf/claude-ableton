@@ -232,6 +232,84 @@ class DeviceHandler(AbletonOSCHandler):
         )
 
         #--------------------------------------------------------------------------------
+        # Device: Rack chains + nested devices
+        #
+        # A rack device (Instrument/Audio Effect/MIDI Effect/Drum Rack) contains
+        # `chains`, each with its own `devices` list and a `mixer_device`
+        # (volume/panning + mute/solo on the chain). These handlers make racks
+        # transparent — list chains, reach the devices nested inside them, and
+        # balance the chain mixer. Addressing is one level deep:
+        # track -> device(rack) -> chain -> nested device -> parameter.
+        #--------------------------------------------------------------------------------
+        def _rack(track_index, device_index):
+            return self.song.tracks[track_index].devices[device_index]
+
+        def device_get_num_chains(params: Tuple[Any]):
+            ti, di = int(params[0]), int(params[1])
+            dev = _rack(ti, di)
+            n = len(dev.chains) if getattr(dev, "can_have_chains", False) else 0
+            return (ti, di, n)
+
+        def device_get_chains(params: Tuple[Any]):
+            # Reply: (ti, di, [name, mute, solo, num_devices] per chain).
+            ti, di = int(params[0]), int(params[1])
+            dev = _rack(ti, di)
+            out = []
+            if getattr(dev, "can_have_chains", False):
+                for ch in dev.chains:
+                    out += [ch.name, int(bool(ch.mute)), int(bool(ch.solo)), len(ch.devices)]
+            return (ti, di, *out)
+
+        def device_get_visible_macro_count(params: Tuple[Any]):
+            ti, di = int(params[0]), int(params[1])
+            dev = _rack(ti, di)
+            return (ti, di, int(getattr(dev, "visible_macro_count", 0)))
+
+        def chain_get_device_names(params: Tuple[Any]):
+            ti, di, ci = int(params[0]), int(params[1]), int(params[2])
+            ch = _rack(ti, di).chains[ci]
+            return (ti, di, ci, *[d.name for d in ch.devices])
+
+        def chain_get_device_parameters(params: Tuple[Any]):
+            # Reply: (ti, di, ci, ndi, [name, value, min, max] per parameter).
+            ti, di, ci, ndi = (int(params[0]), int(params[1]), int(params[2]), int(params[3]))
+            dev = _rack(ti, di).chains[ci].devices[ndi]
+            out = []
+            for p in dev.parameters:
+                out += [p.name, p.value, p.min, p.max]
+            return (ti, di, ci, ndi, *out)
+
+        def chain_set_device_parameter(params: Tuple[Any]):
+            ti, di, ci, ndi = (int(params[0]), int(params[1]), int(params[2]), int(params[3]))
+            pidx = int(params[4])
+            value = float(params[5])
+            self.song.tracks[ti].devices[di].chains[ci].devices[ndi].parameters[pidx].value = value
+
+        def chain_set_mixer(params: Tuple[Any]):
+            # (ti, di, ci, prop, value). prop in volume|panning|mute|solo.
+            ti, di, ci = int(params[0]), int(params[1]), int(params[2])
+            prop = str(params[3])
+            ch = _rack(ti, di).chains[ci]
+            if prop == "volume":
+                ch.mixer_device.volume.value = float(params[4])
+            elif prop == "panning":
+                ch.mixer_device.panning.value = float(params[4])
+            elif prop == "mute":
+                ch.mute = bool(int(params[4]))
+            elif prop == "solo":
+                ch.solo = bool(int(params[4]))
+            else:
+                self.logger.warning("chain_set_mixer: unknown prop %r" % prop)
+
+        self.osc_server.add_handler("/live/device/get/num_chains", device_get_num_chains)
+        self.osc_server.add_handler("/live/device/get/chains", device_get_chains)
+        self.osc_server.add_handler("/live/device/get/visible_macro_count", device_get_visible_macro_count)
+        self.osc_server.add_handler("/live/device/chain/get/device_names", chain_get_device_names)
+        self.osc_server.add_handler("/live/device/chain/get/parameters", chain_get_device_parameters)
+        self.osc_server.add_handler("/live/device/chain/set/parameter", chain_set_device_parameter)
+        self.osc_server.add_handler("/live/device/chain/set/mixer", chain_set_mixer)
+
+        #--------------------------------------------------------------------------------
         # Device: Drum Rack pad introspection
         #
         # A Drum Rack exposes `drum_pads`, a list of 128 pads indexed by MIDI note.

@@ -11,7 +11,7 @@ automate parameters, build arrangements, and master — all by chatting.
  to the kick, and a tape-wobble auto-filter on the keys."
 ```
 
-Everything materializes in your open Live set. 132 tools.
+Everything materializes in your open Live set. 136 tools.
 
 ![claude-ableton building a track in Ableton Live 12, sped up](docs/demo.gif)
 
@@ -97,7 +97,7 @@ reachable off your machine.
 
 ---
 
-## What it can do (132 tools)
+## What it can do (136 tools)
 
 - **Tracks & instruments** — create/duplicate/delete MIDI tracks; load any
   built-in Live 12 instrument (synths, samplers, racks, Drum Synths) or a named
@@ -177,7 +177,7 @@ npm run package      # vendor the Remote Script + typecheck + bundle dist/index.
 - `npm run build` — bundle `src/` into a single `dist/index.js` (esbuild).
 - `npm run typecheck` — `tsc --noEmit`.
 - `npm run vendor` — re-vendor the pinned AbletonOSC fork into `vendor/`.
-- `node scripts/integration-test.mjs` — drive all 132 tools against a running
+- `node scripts/integration-test.mjs` — drive all 136 tools against a running
   Live (needs OSC port 11001 free and a scratch set open).
 
 The plugin's server is bundled into one self-contained file with no runtime
