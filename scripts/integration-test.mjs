@@ -184,10 +184,16 @@ try {
     assert(devs.length >= 1 && /operator/i.test(devs[0].name), "no Operator");
   });
   let opParamCount = 0;
-  await step("get_device_parameters", async () => {
+  await step("get_device_parameters (+ value_items on quantized)", async () => {
     const params = await call("get_device_parameters", { track_index: keysIdx, device_index: 0 });
     assert(params.length > 0, "no params");
     opParamCount = params.length;
+    // every param has the value_items field; quantized ones with steps carry labels
+    assert(params.every((p) => "value_items" in p), "value_items field missing");
+    const cont = params.find((p) => !p.is_quantized);
+    assert(cont && cont.value_items === null, "continuous param should have null value_items");
+    const quant = params.find((p) => p.is_quantized && Array.isArray(p.value_items) && p.value_items.length >= 2);
+    assert(quant, "no quantized param exposed value_items labels");
   });
   await step("set_device_parameter", async () => {
     const params = await call("get_device_parameters", { track_index: keysIdx, device_index: 0 });

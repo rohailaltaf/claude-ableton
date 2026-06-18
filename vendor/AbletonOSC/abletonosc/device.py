@@ -134,6 +134,18 @@ class DeviceHandler(AbletonOSCHandler):
             param_index = int(params[0])
             return param_index, device.parameters[param_index].name
 
+        def device_get_parameter_value_items(device, params: Tuple[Any] = ()):
+            # For a quantized parameter, the string label of each step (e.g. a
+            # filter type's ['Lowpass','Highpass',...]). Reply: (param_index,
+            # *labels). Non-quantized params have no items (accessing raises),
+            # so we guard and return just the index.
+            param_index = int(params[0])
+            p = device.parameters[param_index]
+            if not p.is_quantized:
+                return (param_index,)
+            return (param_index, *[str(it) for it in p.value_items])
+
+        self.osc_server.add_handler("/live/device/get/parameter/value_items", create_device_callback(device_get_parameter_value_items))
         self.osc_server.add_handler("/live/device/get/parameter/value", create_device_callback(device_get_parameter_value))
         self.osc_server.add_handler("/live/device/get/parameter/value_string", create_device_callback(device_get_parameter_value_string))
         self.osc_server.add_handler("/live/device/set/parameter/value", create_device_callback(device_set_parameter_value))

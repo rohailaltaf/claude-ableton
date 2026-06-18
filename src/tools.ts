@@ -2679,7 +2679,10 @@ export function registerTools(server: McpServer): void {
     {
       description:
         "List a device's exposed parameters with current value + range: parameter_index, " +
-        "name, value, min, max, is_quantized. Use to discover indices before " +
+        "name, value, min, max, is_quantized. For quantized params (filter type, LFO " +
+        "wave, on/off), value_items gives the string label of each step — set value to " +
+        "the index of the label you want (value = min + label position, min is usually 0). " +
+        "Continuous params have value_items=null. Use to discover indices before " +
         "set_device_parameter.",
       inputSchema: { track_index: z.number().int(), device_index: z.number().int() },
     },
@@ -2696,13 +2699,28 @@ export function registerTools(server: McpServer): void {
       const quants = (await c.query("/live/device/get/parameters/is_quantized", args)).slice(2);
       const params = [];
       for (let k = 0; k < n; k++) {
+        const isQuant = asBool(quants[k]);
+        let valueItems: string[] | null = null;
+        if (isQuant) {
+          // value_items reply: (track, device, param_index, *labels). Only
+          // fetched for quantized params (continuous ones have none).
+          const vi = (
+            await c.query("/live/device/get/parameter/value_items", [
+              i(track_index),
+              i(device_index),
+              i(k),
+            ])
+          ).slice(3);
+          if (vi.length) valueItems = vi.map(asStr);
+        }
         params.push({
           parameter_index: k,
           name: asStr(names[k]),
           value: asNum(values[k]),
           min: asNum(mins[k]),
           max: asNum(maxs[k]),
-          is_quantized: asBool(quants[k]),
+          is_quantized: isQuant,
+          value_items: valueItems,
         });
       }
       return jsonResult(params);

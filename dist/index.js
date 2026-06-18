@@ -27002,7 +27002,7 @@ function registerTools(server) {
   server.registerTool(
     "get_device_parameters",
     {
-      description: "List a device's exposed parameters with current value + range: parameter_index, name, value, min, max, is_quantized. Use to discover indices before set_device_parameter.",
+      description: "List a device's exposed parameters with current value + range: parameter_index, name, value, min, max, is_quantized. For quantized params (filter type, LFO wave, on/off), value_items gives the string label of each step \u2014 set value to the index of the label you want (value = min + label position, min is usually 0). Continuous params have value_items=null. Use to discover indices before set_device_parameter.",
       inputSchema: { track_index: external_exports.number().int(), device_index: external_exports.number().int() }
     },
     async ({ track_index, device_index }) => {
@@ -27018,13 +27018,24 @@ function registerTools(server) {
       const quants = (await c.query("/live/device/get/parameters/is_quantized", args)).slice(2);
       const params = [];
       for (let k = 0; k < n; k++) {
+        const isQuant = asBool(quants[k]);
+        let valueItems = null;
+        if (isQuant) {
+          const vi = (await c.query("/live/device/get/parameter/value_items", [
+            i(track_index),
+            i(device_index),
+            i(k)
+          ])).slice(3);
+          if (vi.length) valueItems = vi.map(asStr);
+        }
         params.push({
           parameter_index: k,
           name: asStr(names[k]),
           value: asNum(values[k]),
           min: asNum(mins[k]),
           max: asNum(maxs[k]),
-          is_quantized: asBool(quants[k])
+          is_quantized: isQuant,
+          value_items: valueItems
         });
       }
       return jsonResult(params);
