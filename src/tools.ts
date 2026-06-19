@@ -347,19 +347,34 @@ interface MasterParamInfo {
   value: number;
   min: number;
   max: number;
+  is_quantized: boolean;
+  value_items: string[] | null;
 }
 
 async function readMasterDeviceParameters(deviceIndex: number): Promise<MasterParamInfo[]> {
   const c = await getClient();
+  // reply: flat (name, value, min, max, is_quantized) per parameter.
   const reply = await c.query("/live/master_track/get/device/parameters", [i(deviceIndex)]);
   const out: MasterParamInfo[] = [];
-  for (let k = 0; k < reply.length; k += 4) {
+  for (let k = 0; k + 4 < reply.length; k += 5) {
+    const pidx = k / 5;
+    const isQuant = asBool(reply[k + 4]);
+    let valueItems: string[] | null = null;
+    if (isQuant) {
+      // reply: (device_index, param_index, *labels)
+      const vi = (
+        await c.query("/live/master_track/get/parameter/value_items", [i(deviceIndex), i(pidx)])
+      ).slice(2);
+      if (vi.length) valueItems = vi.map(asStr);
+    }
     out.push({
-      parameter_index: k / 4,
+      parameter_index: pidx,
       name: asStr(reply[k]),
       value: asNum(reply[k + 1]),
       min: asNum(reply[k + 2]),
       max: asNum(reply[k + 3]),
+      is_quantized: isQuant,
+      value_items: valueItems,
     });
   }
   return out;
@@ -2821,8 +2836,9 @@ export function registerTools(server: McpServer): void {
     "get_chain_device_parameters",
     {
       description:
-        "List the parameters of a device nested inside a rack chain (name/value/min/max) — " +
-        "the chain/device indices come from get_rack_chains. The nested device may itself " +
+        "List the parameters of a device nested inside a rack chain (name/value/min/max/" +
+        "is_quantized, plus value_items labels for quantized params — null otherwise). " +
+        "The chain/device indices come from get_rack_chains. The nested device may itself " +
         "be a rack, in which case its parameters are its macros.",
       inputSchema: {
         track_index: z.number().int(),
@@ -2833,6 +2849,7 @@ export function registerTools(server: McpServer): void {
     },
     async ({ track_index, device_index, chain_index, nested_device_index }) => {
       const c = await getClient();
+      // reply: (ti, di, ci, ndi, [name, value, min, max, is_quantized] per param)
       const reply = (
         await c.query("/live/device/chain/get/parameters", [
           i(track_index),
@@ -2842,13 +2859,31 @@ export function registerTools(server: McpServer): void {
         ])
       ).slice(4);
       const params = [];
-      for (let k = 0; k + 3 < reply.length; k += 4) {
+      for (let k = 0; k + 4 < reply.length; k += 5) {
+        const pidx = k / 5;
+        const isQuant = asBool(reply[k + 4]);
+        let valueItems: string[] | null = null;
+        if (isQuant) {
+          // reply: (ti, di, ci, ndi, pidx, *labels)
+          const vi = (
+            await c.query("/live/device/chain/get/parameter_value_items", [
+              i(track_index),
+              i(device_index),
+              i(chain_index),
+              i(nested_device_index),
+              i(pidx),
+            ])
+          ).slice(5);
+          if (vi.length) valueItems = vi.map(asStr);
+        }
         params.push({
-          parameter_index: k / 4,
+          parameter_index: pidx,
           name: asStr(reply[k]),
           value: asNum(reply[k + 1]),
           min: asNum(reply[k + 2]),
           max: asNum(reply[k + 3]),
+          is_quantized: isQuant,
+          value_items: valueItems,
         });
       }
       return jsonResult(params);
@@ -3428,8 +3463,9 @@ export function registerTools(server: McpServer): void {
     "get_master_device_parameters",
     {
       description:
-        "List a Main-track device's parameters with current value and range " +
-        "(parameter_index, name, value, min, max).",
+        "List a Main-track device's parameters: parameter_index, name, value, min, max, " +
+        "is_quantized, and value_items (label per step for quantized params — e.g. a " +
+        "limiter mode or EQ filter type — null otherwise).",
       inputSchema: { device_index: z.number().int().describe("device index on the Main track") },
     },
     async ({ device_index }) => {

@@ -283,13 +283,22 @@ class DeviceHandler(AbletonOSCHandler):
             return (ti, di, ci, *[d.name for d in ch.devices])
 
         def chain_get_device_parameters(params: Tuple[Any]):
-            # Reply: (ti, di, ci, ndi, [name, value, min, max] per parameter).
+            # Reply: (ti, di, ci, ndi, [name, value, min, max, is_quantized] per param).
             ti, di, ci, ndi = (int(params[0]), int(params[1]), int(params[2]), int(params[3]))
             dev = _rack(ti, di).chains[ci].devices[ndi]
             out = []
             for p in dev.parameters:
-                out += [p.name, p.value, p.min, p.max]
+                out += [p.name, p.value, p.min, p.max, int(bool(p.is_quantized))]
             return (ti, di, ci, ndi, *out)
+
+        def chain_get_parameter_value_items(params: Tuple[Any]):
+            # (ti, di, ci, ndi, pidx) -> (ti, di, ci, ndi, pidx, *labels).
+            ti, di, ci, ndi = (int(params[0]), int(params[1]), int(params[2]), int(params[3]))
+            pidx = int(params[4])
+            p = _rack(ti, di).chains[ci].devices[ndi].parameters[pidx]
+            if not p.is_quantized:
+                return (ti, di, ci, ndi, pidx)
+            return (ti, di, ci, ndi, pidx, *[str(it) for it in p.value_items])
 
         def chain_set_device_parameter(params: Tuple[Any]):
             ti, di, ci, ndi = (int(params[0]), int(params[1]), int(params[2]), int(params[3]))
@@ -318,6 +327,7 @@ class DeviceHandler(AbletonOSCHandler):
         self.osc_server.add_handler("/live/device/get/visible_macro_count", device_get_visible_macro_count)
         self.osc_server.add_handler("/live/device/chain/get/device_names", chain_get_device_names)
         self.osc_server.add_handler("/live/device/chain/get/parameters", chain_get_device_parameters)
+        self.osc_server.add_handler("/live/device/chain/get/parameter_value_items", chain_get_parameter_value_items)
         self.osc_server.add_handler("/live/device/chain/set/parameter", chain_set_device_parameter)
         self.osc_server.add_handler("/live/device/chain/set/mixer", chain_set_mixer)
 

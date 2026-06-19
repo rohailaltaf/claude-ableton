@@ -116,13 +116,23 @@ class MasterTrackHandler(AbletonOSCHandler):
             return tuple(d.name for d in self.song.master_track.devices)
 
         def master_get_device_parameters(params: Tuple[Any]):
-            # Reply: flat (name, value, min, max) per parameter for one device.
+            # Reply: flat (name, value, min, max, is_quantized) per parameter.
             device_index = int(params[0])
             device = self.song.master_track.devices[device_index]
             out = []
             for p in device.parameters:
-                out += [p.name, p.value, p.min, p.max]
+                out += [p.name, p.value, p.min, p.max, int(bool(p.is_quantized))]
             return tuple(out)
+
+        def master_get_parameter_value_items(params: Tuple[Any]):
+            # (device_index, param_index) -> (device_index, param_index, *labels).
+            # Quantized params only; others raise on .value_items, so guard.
+            device_index = int(params[0])
+            param_index = int(params[1])
+            p = self.song.master_track.devices[device_index].parameters[param_index]
+            if not p.is_quantized:
+                return (device_index, param_index)
+            return (device_index, param_index, *[str(it) for it in p.value_items])
 
         def master_set_device_parameter(params: Tuple[Any]):
             device_index = int(params[0])
@@ -142,6 +152,7 @@ class MasterTrackHandler(AbletonOSCHandler):
         self.osc_server.add_handler("/live/master_track/get/num_devices", master_get_num_devices)
         self.osc_server.add_handler("/live/master_track/get/devices/name", master_get_device_names)
         self.osc_server.add_handler("/live/master_track/get/device/parameters", master_get_device_parameters)
+        self.osc_server.add_handler("/live/master_track/get/parameter/value_items", master_get_parameter_value_items)
         self.osc_server.add_handler("/live/master_track/set/device/parameter", master_set_device_parameter)
         self.osc_server.add_handler("/live/master_track/get/volume", master_get_volume)
         self.osc_server.add_handler("/live/master_track/set/volume", master_set_volume)

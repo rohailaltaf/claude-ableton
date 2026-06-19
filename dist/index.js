@@ -25169,13 +25169,22 @@ async function readMasterDeviceParameters(deviceIndex) {
   const c = await getClient();
   const reply = await c.query("/live/master_track/get/device/parameters", [i(deviceIndex)]);
   const out = [];
-  for (let k = 0; k < reply.length; k += 4) {
+  for (let k = 0; k + 4 < reply.length; k += 5) {
+    const pidx = k / 5;
+    const isQuant = asBool(reply[k + 4]);
+    let valueItems = null;
+    if (isQuant) {
+      const vi = (await c.query("/live/master_track/get/parameter/value_items", [i(deviceIndex), i(pidx)])).slice(2);
+      if (vi.length) valueItems = vi.map(asStr);
+    }
     out.push({
-      parameter_index: k / 4,
+      parameter_index: pidx,
       name: asStr(reply[k]),
       value: asNum(reply[k + 1]),
       min: asNum(reply[k + 2]),
-      max: asNum(reply[k + 3])
+      max: asNum(reply[k + 3]),
+      is_quantized: isQuant,
+      value_items: valueItems
     });
   }
   return out;
@@ -27116,7 +27125,7 @@ function registerTools(server) {
   server.registerTool(
     "get_chain_device_parameters",
     {
-      description: "List the parameters of a device nested inside a rack chain (name/value/min/max) \u2014 the chain/device indices come from get_rack_chains. The nested device may itself be a rack, in which case its parameters are its macros.",
+      description: "List the parameters of a device nested inside a rack chain (name/value/min/max/is_quantized, plus value_items labels for quantized params \u2014 null otherwise). The chain/device indices come from get_rack_chains. The nested device may itself be a rack, in which case its parameters are its macros.",
       inputSchema: {
         track_index: external_exports.number().int(),
         device_index: external_exports.number().int().describe("the rack device"),
@@ -27133,13 +27142,28 @@ function registerTools(server) {
         i(nested_device_index)
       ])).slice(4);
       const params = [];
-      for (let k = 0; k + 3 < reply.length; k += 4) {
+      for (let k = 0; k + 4 < reply.length; k += 5) {
+        const pidx = k / 5;
+        const isQuant = asBool(reply[k + 4]);
+        let valueItems = null;
+        if (isQuant) {
+          const vi = (await c.query("/live/device/chain/get/parameter_value_items", [
+            i(track_index),
+            i(device_index),
+            i(chain_index),
+            i(nested_device_index),
+            i(pidx)
+          ])).slice(5);
+          if (vi.length) valueItems = vi.map(asStr);
+        }
         params.push({
-          parameter_index: k / 4,
+          parameter_index: pidx,
           name: asStr(reply[k]),
           value: asNum(reply[k + 1]),
           min: asNum(reply[k + 2]),
-          max: asNum(reply[k + 3])
+          max: asNum(reply[k + 3]),
+          is_quantized: isQuant,
+          value_items: valueItems
         });
       }
       return jsonResult(params);
@@ -27607,7 +27631,7 @@ function registerTools(server) {
   server.registerTool(
     "get_master_device_parameters",
     {
-      description: "List a Main-track device's parameters with current value and range (parameter_index, name, value, min, max).",
+      description: "List a Main-track device's parameters: parameter_index, name, value, min, max, is_quantized, and value_items (label per step for quantized params \u2014 e.g. a limiter mode or EQ filter type \u2014 null otherwise).",
       inputSchema: { device_index: external_exports.number().int().describe("device index on the Main track") }
     },
     async ({ device_index }) => {
