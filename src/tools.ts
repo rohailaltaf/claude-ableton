@@ -927,6 +927,115 @@ export function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "get_groove_pool",
+    {
+      description:
+        "List the grooves currently in the Groove Pool — swing/feel templates that can be " +
+        "applied to clips. Each: groove_index, name, base (the grid it operates on), and " +
+        "its amounts — quantization (pull toward the grid), timing (how much groove swing), " +
+        "random (timing randomization → humanize), velocity (velocity variation). Assign " +
+        "one to a clip with set_clip_groove; tune the amounts with set_groove_params; the " +
+        "global groove_amount (set_groove_amount) scales them all. NOTE: grooves can't be " +
+        "loaded from disk via Live's API — this manages grooves already in the pool (from " +
+        "loaded clips/packs, or dragged in via Live's browser).",
+      inputSchema: {},
+    },
+    async () => {
+      const c = await getClient();
+      // reply: flat (name, base, quantization, timing, random, velocity) per groove
+      const reply = await c.query("/live/song/groove_pool/get/grooves");
+      const grooves = [];
+      for (let k = 0; k + 5 < reply.length; k += 6) {
+        grooves.push({
+          groove_index: k / 6,
+          name: asStr(reply[k]),
+          base: asStr(reply[k + 1]),
+          quantization_amount: asNum(reply[k + 2]),
+          timing_amount: asNum(reply[k + 3]),
+          random_amount: asNum(reply[k + 4]),
+          velocity_amount: asNum(reply[k + 5]),
+        });
+      }
+      return jsonResult(grooves);
+    },
+  );
+
+  server.registerTool(
+    "set_groove_params",
+    {
+      description:
+        "Tune a groove in the Groove Pool (by groove_index from get_groove_pool). Editing " +
+        "a groove changes the feel of EVERY clip using it. Amounts are percentages: " +
+        "timing (how much of the groove's swing, ~0-130), quantization (snap toward the " +
+        "grid first, 0-100), random (timing randomization for human feel, 0-100), velocity " +
+        "(velocity variation, -100 to 100). Provide any subset.",
+      inputSchema: {
+        groove_index: z.number().int().describe("index from get_groove_pool"),
+        timing: z.number().optional().describe("groove timing/swing amount (~0-130)"),
+        quantization: z.number().optional().describe("quantize-toward-grid amount (0-100)"),
+        random: z.number().optional().describe("timing randomization / humanize (0-100)"),
+        velocity: z.number().optional().describe("velocity variation (-100 to 100)"),
+      },
+    },
+    async ({ groove_index, timing, quantization, random, velocity }) => {
+      if (timing === undefined && quantization === undefined && random === undefined && velocity === undefined) {
+        throw new Error("provide at least one of timing, quantization, random, velocity");
+      }
+      const c = await getClient();
+      const send = (prop: string, v: number) =>
+        c.send("/live/song/groove_pool/set/groove", i(groove_index), prop, f(v));
+      if (timing !== undefined) send("timing", timing);
+      if (quantization !== undefined) send("quantization", quantization);
+      if (random !== undefined) send("random", random);
+      if (velocity !== undefined) send("velocity", velocity);
+      return jsonResult({ groove_index, timing, quantization, random, velocity });
+    },
+  );
+
+  server.registerTool(
+    "set_clip_groove",
+    {
+      description:
+        "Apply a Groove Pool groove to a clip (swing/feel). groove_index comes from " +
+        "get_groove_pool. The groove's effect also depends on the global groove_amount " +
+        "(set_groove_amount). NOTE: Live's API can ASSIGN a groove but cannot CLEAR one " +
+        "(setting a clip's groove to none is rejected by Live) — to kill groove feel " +
+        "globally set groove_amount to 0, or clear the clip's groove in Live's UI.",
+      inputSchema: {
+        track_index: z.number().int(),
+        clip_slot: z.number().int().describe("must contain a clip"),
+        groove_index: z.number().int().describe("index from get_groove_pool (>= 0)"),
+      },
+    },
+    async ({ track_index, clip_slot, groove_index }) => {
+      if (groove_index < 0) {
+        throw new Error(
+          "groove_index must be >= 0. Clearing a clip's groove isn't supported by Live's " +
+            "API — use set_groove_amount(0) to disable groove globally, or clear it in Live.",
+        );
+      }
+      const c = await getClient();
+      const pool = await c.query("/live/song/groove_pool/get/grooves");
+      const poolCount = Math.floor(pool.length / 6);
+      if (groove_index >= poolCount) {
+        throw new Error(
+          `groove_index ${groove_index} out of range (pool has ${poolCount} groove(s)). ` +
+            "See get_groove_pool.",
+        );
+      }
+      c.send("/live/clip/set/groove", i(track_index), i(clip_slot), i(groove_index));
+      await sleep(LIVE_TICK_MS);
+      const g = await c.query("/live/clip/get/groove", [i(track_index), i(clip_slot)]);
+      return jsonResult({
+        track_index,
+        clip_slot,
+        groove_index: asNum(g[2]),
+        groove_name: asStr(g[3]),
+      });
+    },
+  );
+
+  server.registerTool(
     "set_time_signature",
     {
       description:

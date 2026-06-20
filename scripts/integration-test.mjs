@@ -1,5 +1,5 @@
 /**
- * Live integration test: spawn the built MCP server and exercise the 136 tools
+ * Live integration test: spawn the built MCP server and exercise the 139 tools
  * against a running Ableton Live (AbletonOSC selected as Control Surface).
  *
  * REQUIREMENTS:
@@ -105,6 +105,33 @@ try {
     const r = await call("set_groove_amount", { amount: 0.5 });
     assert(Math.abs(r.amount - 0.5) < 1e-6, "groove amount not echoed");
     await call("set_groove_amount", { amount: 0 });
+  });
+  await step("groove pool: list + edit params + assign to clip", async () => {
+    const pool = await call("get_groove_pool");
+    assert(Array.isArray(pool), "groove pool not array");
+    if (pool.length === 0) {
+      console.log("      (groove pool empty — skipped assign/edit; grooves can't be loaded via API)");
+      return;
+    }
+    const g = pool[0];
+    assert(typeof g.timing_amount === "number" && typeof g.name === "string", "groove shape wrong");
+    // edit params (restore after)
+    const origTiming = g.timing_amount, origRandom = g.random_amount;
+    await call("set_groove_params", { groove_index: 0, timing: 80, random: 12 });
+    const after = (await call("get_groove_pool"))[0];
+    assert(Math.abs(after.timing_amount - 80) < 1, `groove timing not 80 (got ${after.timing_amount})`);
+    assert(Math.abs(after.random_amount - 12) < 1, `groove random not 12 (got ${after.random_amount})`);
+    await call("set_groove_params", { groove_index: 0, timing: origTiming, random: origRandom });
+    // assign to a fresh clip
+    const t = (await call("create_midi_track", { name: "ZZ Groove" })).track_index;
+    await call("create_clip", { track_index: t, clip_slot: 0, length_bars: 1 });
+    const res = await call("set_clip_groove", { track_index: t, clip_slot: 0, groove_index: 0 });
+    assert(res.groove_index === 0, `assign returned groove_index ${res.groove_index}`);
+    // bad index rejected
+    let rej = false;
+    try { await call("set_clip_groove", { track_index: t, clip_slot: 0, groove_index: 999 }); } catch { rej = true; }
+    assert(rej, "out-of-range groove_index not rejected");
+    await call("delete_track", { track_index: t });
   });
 
   // ---- time signature: set 3/4, create_clip honors it, restore ----

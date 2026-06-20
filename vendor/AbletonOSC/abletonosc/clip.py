@@ -230,6 +230,36 @@ class ClipHandler(AbletonOSCHandler):
                  note.release_velocity) = m
             clip.apply_note_modifications(notes)
 
+        def clip_set_groove(clip, params: Tuple[Any] = ()):
+            # params[0] = groove_index into song.groove_pool.grooves.
+            # Note: Live's Python API rejects `clip.groove = None`, so there is
+            # no way to CLEAR a clip's groove here — only assign one.
+            groove_index = int(params[0])
+            if groove_index < 0:
+                self.logger.warning("clip_set_groove: clearing a clip groove is not supported by the LOM")
+                return
+            grooves = self.song.groove_pool.grooves
+            if groove_index >= len(grooves):
+                self.logger.warning("clip_set_groove: groove index %d out of range" % groove_index)
+                return
+            clip.groove = grooves[groove_index]
+
+        def clip_get_groove(clip, params: Tuple[Any] = ()):
+            # Reply: (groove_index, name). index -1 + "" when no groove applied.
+            # Gate on has_groove — clip.groove can return a non-None default even
+            # when nothing is actually applied to the clip.
+            if not clip.has_groove:
+                return (-1, "")
+            g = clip.groove
+            if g is None:
+                return (-1, "")
+            for idx, gg in enumerate(self.song.groove_pool.grooves):
+                if gg == g:
+                    return (idx, g.name)
+            return (-1, g.name)
+
+        self.osc_server.add_handler("/live/clip/set/groove", create_clip_callback(clip_set_groove))
+        self.osc_server.add_handler("/live/clip/get/groove", create_clip_callback(clip_get_groove))
         self.osc_server.add_handler("/live/clip/get/notes", create_clip_callback(clip_get_notes))
         self.osc_server.add_handler("/live/clip/add/notes", create_clip_callback(clip_add_notes))
         self.osc_server.add_handler("/live/clip/remove/notes", create_clip_callback(clip_remove_notes))

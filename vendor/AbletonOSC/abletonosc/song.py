@@ -15,6 +15,44 @@ class SongHandler(AbletonOSCHandler):
 
     def init_api(self):
         #--------------------------------------------------------------------------------
+        # Groove pool — list + edit grooves currently in the pool. Grooves can't
+        # be loaded from the browser via the LOM (no grooves browser node, no
+        # pool load method), so this manages what's already there (loaded from
+        # clips/packs or dragged in by the user).
+        #--------------------------------------------------------------------------------
+        def groove_pool_get_grooves(params: Tuple[Any] = ()):
+            # Reply: flat (name, base, quantization, timing, random, velocity) per groove.
+            out = []
+            for g in self.song.groove_pool.grooves:
+                out += [g.name, str(g.base), g.quantization_amount, g.timing_amount,
+                        g.random_amount, g.velocity_amount]
+            return tuple(out)
+
+        def groove_pool_set_groove(params: Tuple[Any]):
+            # (groove_index, prop, value). prop in quantization|timing|random|velocity.
+            idx = int(params[0])
+            prop = str(params[1])
+            val = float(params[2])
+            grooves = self.song.groove_pool.grooves
+            if idx < 0 or idx >= len(grooves):
+                self.logger.warning("groove_pool_set_groove: index %d out of range" % idx)
+                return
+            g = grooves[idx]
+            if prop == "quantization":
+                g.quantization_amount = val
+            elif prop == "timing":
+                g.timing_amount = val
+            elif prop == "random":
+                g.random_amount = val
+            elif prop == "velocity":
+                g.velocity_amount = val
+            else:
+                self.logger.warning("groove_pool_set_groove: unknown prop %r" % prop)
+
+        self.osc_server.add_handler("/live/song/groove_pool/get/grooves", groove_pool_get_grooves)
+        self.osc_server.add_handler("/live/song/groove_pool/set/groove", groove_pool_set_groove)
+
+        #--------------------------------------------------------------------------------
         # Callbacks for Song: methods
         #--------------------------------------------------------------------------------
         for method in [

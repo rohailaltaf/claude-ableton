@@ -1,6 +1,6 @@
 {
   "name": "claude-ableton",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Drive Ableton Live 12 from Claude — create tracks, load instruments/drums/samples, write MIDI clips and chord progressions, mix, sidechain, automate, and master, all via AbletonOSC.",
   "author": {
     "name": "Rohail Altaf"
